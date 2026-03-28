@@ -75,9 +75,19 @@ public class TerminalManager
             var hasClaude = File.Exists(claudeMdPath);
             Logger.Log($"TerminalManager: projectPath={projectPath}, hasClaude={hasClaude}");
 
-            var cdCommand = hasClaude
-                ? $"cd \"{projectPath}\" && cls && claude\r\n"
-                : $"cd \"{projectPath}\" && cls\r\n";
+            var shellName = Path.GetFileNameWithoutExtension(ConPtyTerminal.DefaultShell).ToLower();
+            var cdCommand = shellName switch
+            {
+                "bash" => hasClaude
+                    ? $"cd '{projectPath.Replace("\\", "/")}' && clear && claude\r\n"
+                    : $"cd '{projectPath.Replace("\\", "/")}' && clear\r\n",
+                "powershell" or "pwsh" => hasClaude
+                    ? $"cd '{projectPath}'; clear; claude\r\n"
+                    : $"cd '{projectPath}'; clear\r\n",
+                _ => hasClaude  // cmd
+                    ? $"cd \"{projectPath}\" && cls && claude\r\n"
+                    : $"cd \"{projectPath}\" && cls\r\n",
+            };
 
             // Small delay to let shell initialize
             Task.Delay(500).ContinueWith(_ => terminal.WriteInput(cdCommand));

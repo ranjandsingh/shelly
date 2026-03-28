@@ -63,34 +63,90 @@
                             </ContextMenu>
                         </Border.ContextMenu>
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="8" Height="8" Margin="0,0,6,0">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Setter Property="Fill" Value="#FF555555"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Status}" Value="Working">
-                                                <Setter Property="Fill" Value="#FFFFA726"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
-                                                <Setter Property="Fill" Value="#FF42A5F5"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
-                                                <Setter Property="Fill" Value="#FF4CAF50"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Status}" Value="Interrupted">
-                                                <Setter Property="Fill" Value="#FFEF5350"/>
-                                            </DataTrigger>
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding Status}" Value="Idle"/>
-                                                    <Condition Binding="{Binding IsProjectOpen}" Value="True"/>
-                                                </MultiDataTrigger.Conditions>
-                                                <Setter Property="Fill" Value="#FF4CAF50"/>
-                                            </MultiDataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Ellipse.Style>
-                            </Ellipse>
+                            <!-- Status icon per tab -->
+                            <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <!-- Default dot: idle/working/interrupted -->
+                                <!-- Idle/Interrupted: colored dot -->
+                                <Ellipse Width="6" Height="6">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="#FF4CAF50"/>
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="Working">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="Interrupted">
+                                                    <Setter Property="Fill" Value="#FFEF5350"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <!-- Working: spinning orange arc -->
+                                <Canvas Width="10" Height="10" RenderTransformOrigin="0.5,0.5">
+                                    <Canvas.Style>
+                                        <Style TargetType="Canvas">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="Working">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Canvas.Style>
+                                    <Canvas.RenderTransform>
+                                        <RotateTransform Angle="0"/>
+                                    </Canvas.RenderTransform>
+                                    <Canvas.Triggers>
+                                        <EventTrigger RoutedEvent="Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetProperty="(Canvas.RenderTransform).(RotateTransform.Angle)"
+                                                                     From="0" To="360" Duration="0:0:0.8"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Canvas.Triggers>
+                                    <Path Data="M5,0 A5,5 0 1 1 0,5" Stroke="#FFFFA726"
+                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                </Canvas>
+                                <!-- WaitingForInput: warning triangle -->
+                                <Path Data="M5,1 L9,9 L1,9 Z" Stroke="#FFFFA726" StrokeThickness="1.5"
+                                      StrokeLineJoin="Round" Fill="Transparent">
+                                    <Path.Style>
+                                        <Style TargetType="Path">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Path.Style>
+                                </Path>
+                                <!-- TaskCompleted: checkmark -->
+                                <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
+                                      StrokeThickness="1.5" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                                    <Path.Style>
+                                        <Style TargetType="Path">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Path.Style>
+                                </Path>
+                            </Grid>
                             <TextBlock Text="{Binding ProjectName}"
                                        Foreground="#FFE0E0E0" FontSize="12"
                                        VerticalAlignment="Center"/>
