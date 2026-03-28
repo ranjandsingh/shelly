@@ -67,12 +67,11 @@ public partial class FloatingPanel : Window
         _isTransitioning = true;
         _collapseTimer?.Stop();
 
-        // Set expanded size
+        // Set size first, then swap visibility so layout has correct dimensions
         Width = ExpandedWidth;
         Height = ExpandedHeight;
         ResizeMode = ResizeMode.CanResizeWithGrip;
 
-        // Swap visibility
         CollapsedBar.Visibility = Visibility.Collapsed;
         ExpandedPanel.Visibility = Visibility.Visible;
 
@@ -97,9 +96,19 @@ public partial class FloatingPanel : Window
         Activate();
         IdeDetector.Instance.StartPolling();
 
-        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
+        // Force WebView2's native HWND to reposition after window resize.
+        // Must happen after layout is fully complete — delay slightly then toggle.
+        Task.Delay(50).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
+        {
+            TerminalHost.Visibility = Visibility.Hidden;
+            Task.Delay(30).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
+            {
+                TerminalHost.Visibility = Visibility.Visible;
+                TerminalHost.FocusTerminal();
+            }));
+        }));
 
-        Task.Delay(350).ContinueWith(_ =>
+        Task.Delay(400).ContinueWith(_ =>
             Dispatcher.InvokeAsync(() => _isTransitioning = false));
     }
 

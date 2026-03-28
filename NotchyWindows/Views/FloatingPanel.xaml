@@ -58,16 +58,20 @@
             </Border.RenderTransform>
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="40" MinHeight="40"/>
+                    <RowDefinition Height="1"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Tab bar (also serves as drag area via pin button region) -->
+                <!-- Tab bar (also serves as drag area) -->
                 <views:SessionTabBar Grid.Row="0" x:Name="TabBar"
                                      MouseLeftButtonDown="DragBar_MouseLeftButtonDown"/>
 
+                <!-- Separator -->
+                <Border Grid.Row="1" Background="#FF333333"/>
+
                 <!-- Terminal area -->
-                <Border Grid.Row="1" Background="#FF1A1A1A">
+                <Border Grid.Row="2" Background="#FF1A1A1A">
                     <views:TerminalHostControl x:Name="TerminalHost"/>
                 </Border>
             </Grid>
