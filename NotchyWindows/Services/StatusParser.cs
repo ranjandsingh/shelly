@@ -19,8 +19,10 @@ public static class StatusParser
     {
         var text = Encoding.UTF8.GetString(data);
 
-        // Fast-path: only "esc to interrupt" is reliable in raw output
-        if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
+        // Fast-path: detect working from raw output
+        if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("Clauding", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
         {
             UpdateStatus(sessionId, TerminalStatus.Working);
         }
@@ -47,18 +49,31 @@ public static class StatusParser
 
     private static TerminalStatus ClassifyVisibleText(string text, TerminalStatus current)
     {
-        // Working: "esc to interrupt" is the strongest signal
+        // Working signals — any of these mean Claude is actively processing
         if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.Working;
+        if (text.Contains("Clauding", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.Working;
+        if (text.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.Working;
+        if (text.Contains("Reading") && text.Contains("file"))
+            return TerminalStatus.Working;
+        if (text.Contains("Writing") && text.Contains("file"))
+            return TerminalStatus.Working;
+        if (text.Contains("ctrl+o to expand", StringComparison.OrdinalIgnoreCase))
             return TerminalStatus.Working;
 
         // WaitingForInput: Claude asking for user decision
         if (text.Contains("Esc to cancel", StringComparison.OrdinalIgnoreCase))
             return TerminalStatus.WaitingForInput;
+        if (text.Contains("Do you want to proceed", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
+        if (text.Contains("Yes / No", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
 
         // Claude prompt with option numbers (❯ followed by digit)
         if (text.Contains("❯"))
         {
-            // Check last few lines for prompt pattern
             var lines = text.Split('\n');
             foreach (var line in lines.TakeLast(5))
             {
@@ -82,6 +97,14 @@ public static class StatusParser
 
         var oldStatus = session.Status;
         if (newStatus == oldStatus) return;
+
+        // Sticky: don't drop from Working to Idle too quickly (polling can miss spinner)
+        if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
+        {
+            if (_lastWorkingTime.TryGetValue(sessionId, out var lastWork) &&
+                (DateTime.UtcNow - lastWork).TotalSeconds < 2)
+                return; // stay Working for at least 2s
+        }
 
         if (newStatus == TerminalStatus.Working)
         {

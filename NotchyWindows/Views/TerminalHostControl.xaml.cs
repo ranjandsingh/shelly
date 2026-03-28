@@ -60,6 +60,13 @@ public partial class TerminalHostControl : UserControl
 
         WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
+        // Auto-grant clipboard permission (prevents "wants to access clipboard" popup)
+        WebView.CoreWebView2.PermissionRequested += (_, args) =>
+        {
+            if (args.PermissionKind == CoreWebView2PermissionKind.ClipboardRead)
+                args.State = CoreWebView2PermissionState.Allow;
+        };
+
         // Capture JS console output for debugging
         WebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 

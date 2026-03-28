@@ -52,6 +52,27 @@
             }
         });
 
+        // Ctrl+V paste support
+        term.attachCustomKeyEventHandler(e => {
+            if (e.ctrlKey && e.key === 'v' && e.type === 'keydown') {
+                navigator.clipboard.readText().then(text => {
+                    if (text && window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage(text);
+                    }
+                });
+                return false; // prevent default
+            }
+            // Ctrl+C: let xterm handle it (copy if selection, otherwise send SIGINT)
+            if (e.ctrlKey && e.key === 'c' && e.type === 'keydown') {
+                if (term.hasSelection()) {
+                    navigator.clipboard.writeText(term.getSelection());
+                    term.clearSelection();
+                    return false;
+                }
+            }
+            return true;
+        });
+
         // Handle resize — debounced to prevent feedback loop with ConPTY redraws.
         // The first resize fires immediately so ConPTY gets the real terminal size.
         let resizeTimer = null;

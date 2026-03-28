@@ -65,11 +65,12 @@
                         <StackPanel Orientation="Horizontal">
                             <!-- Status icon per tab -->
                             <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
-                                <!-- Idle dot (green or gray) -->
+                                <!-- Default dot: idle/working/interrupted -->
+                                <!-- Idle/Interrupted: colored dot -->
                                 <Ellipse Width="6" Height="6">
                                     <Ellipse.Style>
                                         <Style TargetType="Ellipse">
-                                            <Setter Property="Fill" Value="#FF555555"/>
+                                            <Setter Property="Fill" Value="#FF4CAF50"/>
                                             <Setter Property="Visibility" Value="Visible"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Status}" Value="Working">
@@ -84,18 +85,11 @@
                                                 <DataTrigger Binding="{Binding Status}" Value="Interrupted">
                                                     <Setter Property="Fill" Value="#FFEF5350"/>
                                                 </DataTrigger>
-                                                <MultiDataTrigger>
-                                                    <MultiDataTrigger.Conditions>
-                                                        <Condition Binding="{Binding Status}" Value="Idle"/>
-                                                        <Condition Binding="{Binding IsProjectOpen}" Value="True"/>
-                                                    </MultiDataTrigger.Conditions>
-                                                    <Setter Property="Fill" Value="#FF4CAF50"/>
-                                                </MultiDataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </Ellipse.Style>
                                 </Ellipse>
-                                <!-- Working: spinning arc -->
+                                <!-- Working: spinning orange arc -->
                                 <Canvas Width="10" Height="10" RenderTransformOrigin="0.5,0.5">
                                     <Canvas.Style>
                                         <Style TargetType="Canvas">
