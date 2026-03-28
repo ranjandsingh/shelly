@@ -13,11 +13,20 @@ public partial class TerminalHostControl : UserControl
     private Guid? _pendingSessionId;
     private bool _webViewReady;
     private bool _webViewInitStarted;
+    private System.Windows.Threading.DispatcherTimer? _statusPollTimer;
 
     public TerminalHostControl()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+
+        // Poll xterm.js visible buffer every 500ms for Claude status detection
+        _statusPollTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _statusPollTimer.Tick += async (_, _) => await PollTerminalStatus();
+
         Logger.Log("TerminalHostControl: constructor");
     }
 
@@ -123,6 +132,9 @@ public partial class TerminalHostControl : UserControl
             _pendingSessionId = sessionId;
             return;
         }
+
+        // Start status polling for this session
+        _statusPollTimer?.Start();
 
         var manager = TerminalManager.Instance;
         var store = SessionStore.Instance;
@@ -244,5 +256,23 @@ public partial class TerminalHostControl : UserControl
                 Logger.Log($"TerminalHostControl: WriteOutput EXCEPTION: {ex.Message}");
             }
         });
+    }
+
+    private async Task PollTerminalStatus()
+    {
+        if (!_webViewReady || !_activeSessionId.HasValue) return;
+
+        try
+        {
+            var result = await WebView.CoreWebView2.ExecuteScriptAsync("terminalGetVisibleText()");
+            if (result != null && result != "null")
+            {
+                // ExecuteScriptAsync wraps string results in quotes and escapes
+                var text = System.Text.Json.JsonSerializer.Deserialize<string>(result);
+                if (text != null)
+                    StatusParser.ParseVisibleText(_activeSessionId.Value, text);
+            }
+        }
+        catch { /* ignore polling errors */ }
     }
 }

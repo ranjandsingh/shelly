@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using NotchyWindows.Interop;
 using NotchyWindows.Services;
 
 namespace NotchyWindows.Views;
@@ -11,9 +12,10 @@ namespace NotchyWindows.Views;
 public partial class FloatingPanel : Window
 {
     private bool _isExpanded;
-    private bool _isPinned;
-    private bool _isTransitioning;
-    private DispatcherTimer? _collapseTimer;
+    private bool _isShowing;
+    private bool _hasInteracted; // true once user clicks on the expanded panel
+    private DispatcherTimer? _hoverCollapseTimer;
+    private DateTime? _outsideSince; // tracks when cursor first left the window
 
     private const double CollapsedWidth = 100;
     private const double CollapsedHeight = 28;
@@ -27,15 +29,55 @@ public partial class FloatingPanel : Window
         Height = CollapsedHeight;
         Loaded += OnLoaded;
 
+        // Timer for hover-only collapse. Polls cursor position via Win32 GetCursorPos
+        // (reliable regardless of WebView2 HWND focus). Collapses only after cursor
+        // has been outside the window for 500ms continuously.
+        _hoverCollapseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _hoverCollapseTimer.Tick += (_, _) =>
+        {
+            if (!_isExpanded || _hasInteracted) { _hoverCollapseTimer.Stop(); return; }
+
+            bool inside = false;
+            if (NativeMethods.GetCursorPos(out var pt))
+            {
+                // Compare in screen pixels — use PointToScreen for DPI-awareness
+                try
+                {
+                    var topLeft = PointToScreen(new Point(0, 0));
+                    var bottomRight = PointToScreen(new Point(ActualWidth, ActualHeight));
+                    inside = pt.X >= topLeft.X && pt.X <= bottomRight.X &&
+                             pt.Y >= topLeft.Y && pt.Y <= bottomRight.Y;
+                }
+                catch { }
+            }
+
+            if (inside)
+            {
+                _outsideSince = null; // reset
+            }
+            else
+            {
+                _outsideSince ??= DateTime.UtcNow;
+                if ((DateTime.UtcNow - _outsideSince.Value).TotalMilliseconds >= 500)
+                {
+                    _hoverCollapseTimer.Stop();
+                    _outsideSince = null;
+                    CollapsePanel();
+                }
+            }
+        };
+
         SessionStore.Instance.ActiveSessionChanged += OnActiveSessionChanged;
         SessionStore.Instance.Sessions.CollectionChanged += (_, _) => UpdateCollapsedBar();
 
-        _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
-        _collapseTimer.Tick += (_, _) =>
+        // Listen for status changes on all sessions
+        foreach (var s in SessionStore.Instance.Sessions)
+            s.PropertyChanged += OnSessionPropertyChanged;
+        SessionStore.Instance.Sessions.CollectionChanged += (_, args) =>
         {
-            _collapseTimer.Stop();
-            if (_isExpanded && !_isPinned)
-                CollapsePanel();
+            if (args.NewItems != null)
+                foreach (Models.TerminalSession s in args.NewItems)
+                    s.PropertyChanged += OnSessionPropertyChanged;
         };
     }
 
@@ -60,14 +102,16 @@ public partial class FloatingPanel : Window
 
     public bool IsExpanded => _isExpanded;
 
+    /// <summary>Expand from notch to full panel. Mirrors the original ShowPanel logic.</summary>
     public void ExpandPanel()
     {
         if (_isExpanded) return;
         _isExpanded = true;
-        _isTransitioning = true;
-        _collapseTimer?.Stop();
+        _isShowing = true;
+        _hasInteracted = false;
+        _outsideSince = null;
+        _hoverCollapseTimer?.Start(); // start polling cursor position
 
-        // Set size first, then swap visibility so layout has correct dimensions
         Width = ExpandedWidth;
         Height = ExpandedHeight;
         ResizeMode = ResizeMode.CanResizeWithGrip;
@@ -75,19 +119,15 @@ public partial class FloatingPanel : Window
         CollapsedBar.Visibility = Visibility.Collapsed;
         ExpandedPanel.Visibility = Visibility.Visible;
 
-        // Slide down + fade in
+        // Fade in
         ExpandedPanel.Opacity = 0;
         ExpandedPanelTranslate.Y = -15;
-
         var duration = TimeSpan.FromMilliseconds(220);
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
         var fadeIn = new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         fadeIn.Completed += (_, _) => ExpandedPanel.Opacity = 1;
-
         var slideDown = new DoubleAnimation(-15, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         slideDown.Completed += (_, _) => ExpandedPanelTranslate.Y = 0;
-
         ExpandedPanel.BeginAnimation(OpacityProperty, fadeIn);
         ExpandedPanelTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
 
@@ -96,8 +136,10 @@ public partial class FloatingPanel : Window
         Activate();
         IdeDetector.Instance.StartPolling();
 
-        // Force WebView2's native HWND to reposition after window resize.
-        // Must happen after layout is fully complete — delay slightly then toggle.
+        // Focus terminal
+        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
+
+        // Force WebView2 HWND reposition
         Task.Delay(50).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
         {
             TerminalHost.Visibility = Visibility.Hidden;
@@ -108,32 +150,27 @@ public partial class FloatingPanel : Window
             }));
         }));
 
-        Task.Delay(400).ContinueWith(_ =>
-            Dispatcher.InvokeAsync(() => _isTransitioning = false));
+        // Brief guard so OnDeactivated doesn't fire immediately (original pattern)
+        Task.Delay(300).ContinueWith(_ =>
+            Dispatcher.InvokeAsync(() => _isShowing = false));
     }
 
+    /// <summary>Collapse back to notch. Mirrors the original HidePanel logic.</summary>
     public void CollapsePanel()
     {
         if (!_isExpanded) return;
         _isExpanded = false;
-        _isPinned = false;
 
         var duration = TimeSpan.FromMilliseconds(150);
         var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
-
-        // Slide up + fade out
         var fadeOut = new DoubleAnimation(1, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         var slideUp = new DoubleAnimation(0, -10, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-
         fadeOut.Completed += (_, _) =>
         {
-            // Reset transform and opacity
             ExpandedPanel.Opacity = 1;
             ExpandedPanelTranslate.Y = 0;
-
             ExpandedPanel.Visibility = Visibility.Collapsed;
             CollapsedBar.Visibility = Visibility.Visible;
-
             Width = CollapsedWidth;
             Height = CollapsedHeight;
             ResizeMode = ResizeMode.NoResize;
@@ -142,7 +179,6 @@ public partial class FloatingPanel : Window
             if (!SessionStore.Instance.IsPinned)
                 IdeDetector.Instance.StopPolling();
         };
-
         ExpandedPanel.BeginAnimation(OpacityProperty, fadeOut);
         ExpandedPanelTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
     }
@@ -150,15 +186,9 @@ public partial class FloatingPanel : Window
     public void TogglePanel()
     {
         if (_isExpanded)
-        {
-            _isPinned = false;
             CollapsePanel();
-        }
         else
-        {
-            _isPinned = true;
             ExpandPanel();
-        }
     }
 
     private void PositionCenter()
@@ -168,6 +198,31 @@ public partial class FloatingPanel : Window
         Top = 0;
     }
 
+    // --- Claude status features ---
+
+    private Models.TerminalStatus _lastAutoExpandStatus;
+
+    private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Models.TerminalSession.Status)) return;
+        UpdateCollapsedBar();
+
+        // Auto-expand when Claude needs attention (once per transition)
+        if (sender is Models.TerminalSession session &&
+            session.Id == SessionStore.Instance.ActiveSessionId &&
+            session.Status == Models.TerminalStatus.WaitingForInput &&
+            _lastAutoExpandStatus != Models.TerminalStatus.WaitingForInput &&
+            !_isExpanded)
+        {
+            _lastAutoExpandStatus = session.Status;
+            Dispatcher.InvokeAsync(() => ExpandPanel());
+        }
+        else if (sender is Models.TerminalSession s2)
+        {
+            _lastAutoExpandStatus = s2.Status;
+        }
+    }
+
     private void UpdateCollapsedBar()
     {
         var session = SessionStore.Instance.ActiveSession;
@@ -175,80 +230,121 @@ public partial class FloatingPanel : Window
 
         Dispatcher.InvokeAsync(() =>
         {
-            var count = SessionStore.Instance.Sessions.Count;
-            if (count > 1)
+            var sessions = SessionStore.Instance.Sessions;
+            var count = sessions.Count;
+            CollapsedBadge.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (count > 1) CollapsedBadgeText.Text = count.ToString();
+
+            // Determine highest-priority status across ALL sessions
+            // Priority: WaitingForInput > Working > TaskCompleted > Interrupted > Idle
+            var overallStatus = Models.TerminalStatus.Idle;
+            foreach (var s in sessions)
             {
-                CollapsedBadge.Visibility = Visibility.Visible;
-                CollapsedBadgeText.Text = count.ToString();
-            }
-            else
-            {
-                CollapsedBadge.Visibility = Visibility.Collapsed;
+                if (s.Status == Models.TerminalStatus.WaitingForInput)
+                    { overallStatus = Models.TerminalStatus.WaitingForInput; break; }
+                if (s.Status == Models.TerminalStatus.Working && overallStatus != Models.TerminalStatus.WaitingForInput)
+                    overallStatus = Models.TerminalStatus.Working;
+                if (s.Status == Models.TerminalStatus.TaskCompleted && overallStatus == Models.TerminalStatus.Idle)
+                    overallStatus = Models.TerminalStatus.TaskCompleted;
+                if (s.Status == Models.TerminalStatus.Interrupted && overallStatus == Models.TerminalStatus.Idle)
+                    overallStatus = Models.TerminalStatus.Interrupted;
             }
 
-            CollapsedStatusDot.Fill = session.Status switch
+            // Show the right indicator, hide others
+            CollapsedStatusDot.Visibility = Visibility.Collapsed;
+            CollapsedSpinner.Visibility = Visibility.Collapsed;
+            CollapsedAlertDot.Visibility = Visibility.Collapsed;
+            CollapsedCheckmark.Visibility = Visibility.Collapsed;
+            StopAnimations();
+
+            switch (overallStatus)
             {
-                Models.TerminalStatus.Working => new SolidColorBrush(Color.FromRgb(0xFF, 0xA7, 0x26)),
-                Models.TerminalStatus.WaitingForInput => new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
-                Models.TerminalStatus.TaskCompleted => new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)),
-                Models.TerminalStatus.Interrupted => new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50)),
-                _ => new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50))
-            };
+                case Models.TerminalStatus.Working:
+                    CollapsedSpinner.Visibility = Visibility.Visible;
+                    StartSpinnerAnimation();
+                    break;
+                case Models.TerminalStatus.WaitingForInput:
+                    CollapsedAlertDot.Visibility = Visibility.Visible;
+                    StartPulseAnimation();
+                    break;
+                case Models.TerminalStatus.TaskCompleted:
+                    CollapsedCheckmark.Visibility = Visibility.Visible;
+                    break;
+                case Models.TerminalStatus.Interrupted:
+                    CollapsedStatusDot.Visibility = Visibility.Visible;
+                    CollapsedStatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50));
+                    break;
+                default: // Idle
+                    CollapsedStatusDot.Visibility = Visibility.Visible;
+                    CollapsedStatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+                    break;
+            }
         });
     }
 
-    private void CollapsedBar_MouseEnter(object sender, MouseEventArgs e)
+    // --- UI event handlers ---
+
+    // --- Notch animations ---
+
+    private void StartSpinnerAnimation()
     {
-        _isPinned = false;
-        ExpandPanel();
+        var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(800))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        SpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, spin);
     }
 
+    private void StartPulseAnimation()
+    {
+        var pulse = new DoubleAnimation(0.7, 1.2, TimeSpan.FromMilliseconds(600))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase()
+        };
+        AlertPulse.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
+        AlertPulse.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
+    }
+
+    private void StopAnimations()
+    {
+        SpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        AlertPulse.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        AlertPulse.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+    }
+
+    private void CollapsedBar_MouseEnter(object sender, MouseEventArgs e) => ExpandPanel();
     private void CollapsedBar_Click(object sender, MouseButtonEventArgs e)
     {
-        _isPinned = true;
+        _hasInteracted = true;
         ExpandPanel();
     }
 
-    private void ExpandedPanel_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    private void ExpandedPanel_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        _isPinned = true;
-        _collapseTimer?.Stop();
+        _hasInteracted = true;
+        _hoverCollapseTimer?.Stop();
     }
 
-    private void ExpandedPanel_MouseLeave(object sender, MouseEventArgs e)
-    {
-        if (_isPinned || _isTransitioning) return;
-        _collapseTimer?.Start();
-    }
+    private void ExpandedPanel_MouseEnter(object sender, MouseEventArgs e) { }
+    private void ExpandedPanel_MouseLeave(object sender, MouseEventArgs e) { }
+
 
     private void DragBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 1)
-            DragMove();
-    }
-
-    protected override void OnMouseEnter(MouseEventArgs e)
-    {
-        base.OnMouseEnter(e);
-        _collapseTimer?.Stop();
+        if (e.ClickCount == 1) DragMove();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)
             {
-                case Key.S:
-                    _ = CreateCheckpointAsync();
-                    e.Handled = true;
-                    break;
-                case Key.T:
-                    SessionStore.Instance.AddSession();
-                    e.Handled = true;
-                    break;
+                case Key.S: _ = CreateCheckpointAsync(); e.Handled = true; break;
+                case Key.T: SessionStore.Instance.AddSession(); e.Handled = true; break;
                 case Key.W:
                     var activeId = SessionStore.Instance.ActiveSessionId;
                     if (activeId.HasValue && SessionStore.Instance.Sessions.Count > 1)
@@ -263,7 +359,6 @@ public partial class FloatingPanel : Window
     {
         var session = SessionStore.Instance.ActiveSession;
         if (session?.ProjectPath == null) return;
-
         var success = await CheckpointManager.CreateCheckpoint(session.ProjectPath, session.ProjectName);
         if (success)
         {
@@ -277,30 +372,28 @@ public partial class FloatingPanel : Window
     {
         base.OnDrop(e);
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-
         var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
         if (paths == null) return;
-
         foreach (var path in paths)
         {
             if (Directory.Exists(path))
-            {
-                var name = Path.GetFileName(path);
-                SessionStore.Instance.AddSession(name, path, path);
-            }
+                SessionStore.Instance.AddSession(Path.GetFileName(path), path, path);
         }
     }
 
+    /// <summary>Original OnDeactivated from main branch — with WebView2 focus-steal protection and pin support.</summary>
     protected override void OnDeactivated(EventArgs e)
     {
         base.OnDeactivated(e);
 
-        if (!_isExpanded || !_isPinned || SessionStore.Instance.IsPinned || _isTransitioning)
+        if (!_isExpanded || SessionStore.Instance.IsPinned || _isShowing)
             return;
 
+        // WebView2 hosts its own HWND. When focus moves into the embedded browser, the WPF window
+        // often deactivates even though the user is still interacting with the panel — do not auto-hide.
         Dispatcher.BeginInvoke(() =>
         {
-            if (SessionStore.Instance.IsPinned || !_isExpanded)
+            if (SessionStore.Instance.IsPinned)
                 return;
 
             try
@@ -308,7 +401,7 @@ public partial class FloatingPanel : Window
                 var pos = Mouse.GetPosition(this);
                 if (pos.X >= 0 && pos.Y >= 0 && pos.X <= ActualWidth && pos.Y <= ActualHeight)
                 {
-                    _isPinned = true;
+                    Logger.Log("FloatingPanel: OnDeactivated skipped — pointer still over panel (WebView2 focus)");
                     return;
                 }
             }

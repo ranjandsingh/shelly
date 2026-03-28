@@ -24,8 +24,38 @@
                 MouseLeftButtonUp="CollapsedBar_Click">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                         HorizontalAlignment="Center">
+                <!-- Status dot (idle/default) -->
                 <Ellipse x:Name="CollapsedStatusDot" Width="8" Height="8"
                          Fill="#FF4CAF50" Margin="0,0,6,0"/>
+
+                <!-- Spinner (working) — spinning arc -->
+                <Canvas x:Name="CollapsedSpinner" Width="10" Height="10"
+                        Margin="0,0,6,0" Visibility="Collapsed"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Canvas.RenderTransform>
+                        <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
+                    </Canvas.RenderTransform>
+                    <Path Data="M5,0 A5,5 0 1 1 0,5" Stroke="#FFFFA726"
+                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                </Canvas>
+
+                <!-- Alert dot (waiting for input) — pulsing -->
+                <Ellipse x:Name="CollapsedAlertDot" Width="8" Height="8"
+                         Fill="#FFFFA726" Margin="0,0,6,0" Visibility="Collapsed"
+                         RenderTransformOrigin="0.5,0.5">
+                    <Ellipse.RenderTransform>
+                        <ScaleTransform x:Name="AlertPulse" ScaleX="1" ScaleY="1"/>
+                    </Ellipse.RenderTransform>
+                </Ellipse>
+
+                <!-- Checkmark (task completed) -->
+                <Canvas x:Name="CollapsedCheckmark" Width="10" Height="10"
+                        Margin="0,0,6,0" Visibility="Collapsed">
+                    <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
+                          StrokeThickness="2" StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                </Canvas>
+
                 <TextBlock Text="Terminal"
                            Foreground="#FFE0E0E0" FontSize="11"
                            VerticalAlignment="Center"/>
@@ -50,28 +80,33 @@
                 BorderBrush="#FF333333"
                 BorderThickness="0"
                 Visibility="Collapsed"
+                RenderTransformOrigin="0.5,0"
+                MouseEnter="ExpandedPanel_MouseEnter"
                 MouseLeave="ExpandedPanel_MouseLeave"
-                PreviewMouseDown="ExpandedPanel_PreviewMouseDown"
-                RenderTransformOrigin="0.5,0">
+                PreviewMouseDown="ExpandedPanel_MouseDown">
             <Border.RenderTransform>
                 <TranslateTransform x:Name="ExpandedPanelTranslate" Y="0"/>
             </Border.RenderTransform>
             <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="6"/>
                     <RowDefinition Height="40" MinHeight="40"/>
                     <RowDefinition Height="1"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Tab bar (also serves as drag area) -->
-                <views:SessionTabBar Grid.Row="0" x:Name="TabBar"
-                                     MouseLeftButtonDown="DragBar_MouseLeftButtonDown"/>
+                <!-- Thin drag strip at top -->
+                <Border Grid.Row="0" Background="#FF1E1E1E" Cursor="SizeAll"
+                        MouseLeftButtonDown="DragBar_MouseLeftButtonDown"/>
+
+                <!-- Tab bar -->
+                <views:SessionTabBar Grid.Row="1" x:Name="TabBar"/>
 
                 <!-- Separator -->
-                <Border Grid.Row="1" Background="#FF333333"/>
+                <Border Grid.Row="2" Background="#FF333333"/>
 
                 <!-- Terminal area -->
-                <Border Grid.Row="2" Background="#FF1A1A1A">
+                <Border Grid.Row="3" Background="#FF1A1A1A">
                     <views:TerminalHostControl x:Name="TerminalHost"/>
                 </Border>
             </Grid>
