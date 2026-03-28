@@ -1,0 +1,31 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+*.vs/
+
+## NuGet
+packages/
+*.nupkg
+
+## Build
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+## IDE
+.idea/
+.vscode/
+*.sln.docstates
+
+## OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+## WebView2
+NotchyWindows/Resources/EBWebView/

@@ -1,0 +1,13 @@
+<UserControl x:Class="NotchyWindows.Views.TerminalHostControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
+    <Grid>
+        <wv2:WebView2 x:Name="WebView"
+                      DefaultBackgroundColor="#FF1A1A1A"/>
+        <TextBlock x:Name="LoadingText"
+                   Text="Starting terminal..."
+                   Foreground="#FF888888" FontSize="14"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Grid>
+</UserControl>
