@@ -53,7 +53,45 @@
 
 ### Win32 Interop
 - `NativeMethods.cs`: all P/Invoke declarations (window styles, hotkey, sleep, ConPTY, EnumWindows, cursor)
-- `WindowHelper.cs`: MakeNonActivating helper
+- Floating panel uses normal activation so WebView2/xterm can receive keyboard focus
 
 ### Build Status
 - **Builds successfully** with `dotnet build` — 0 warnings, 0 errors
+
+## 2026-03-28: Wiring Phases 4–9
+
+### Core Session Switching (was missing)
+- Wired `SessionStore.ActiveSessionChanged` → `TerminalHostControl.AttachSession`
+- Connected output handler so ConPTY data flows live to xterm.js via `TerminalManager.SetOutputHandler`
+- Previous session's output handler detached on tab switch
+
+### Phase 4: IDE Detection Wiring
+- `SessionStore` subscribes to `IdeDetector.ProjectsDetected`
+- Auto-creates sessions for newly detected VS Code/JetBrains projects
+- Updates `IsProjectOpen` flag based on whether IDE window is still open
+- Polling starts on panel show, stops on hide (unless pinned)
+
+### Phase 5: Terminal Status Detection Wiring
+- Status-aware tab dot colors: orange=Working, blue=WaitingForInput, green=TaskCompleted, red=Interrupted
+- Idle+ProjectOpen=green, Idle+ProjectClosed=gray
+- `StatusParser.Parse` already called from `TerminalManager` (wired in Phase 2)
+
+### Phase 7: Git Checkpoints UI
+- Ctrl+S creates a git checkpoint for the active session's project
+- Brief "Checkpoint Saved" title feedback
+
+### Phase 8: Sleep Prevention Wiring
+- `SessionStore` watches all session `Status` property changes
+- Calls `SleepPrevention.PreventSleep()` when any session is Working
+- Calls `AllowSleep()` when none are Working; also on app exit
+
+### Phase 9: Polish & UX
+- Panel auto-hide on deactivate when not pinned
+- Active tab highlighting (`IsActive` property + #2A2A2A background)
+- Keyboard shortcuts: Ctrl+T (new tab), Ctrl+W (close tab), Ctrl+S (checkpoint)
+- Terminal resize: WebView2 JSON resize messages parsed and forwarded to `ConPtyTerminal.Resize()`
+- Session persistence: save/load JSON to `%LOCALAPPDATA%\NotchyWindows\sessions.json`
+- Single-instance app check via named Mutex
+- Tray context menu: dynamically lists all sessions, click to switch and show panel
+- Drag & drop folders onto panel to create sessions
+- "New Session" tray menu item now functional

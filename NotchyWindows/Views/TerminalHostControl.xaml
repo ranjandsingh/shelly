@@ -4,10 +4,12 @@
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
     <Grid>
         <wv2:WebView2 x:Name="WebView"
+                      Focusable="True"
                       DefaultBackgroundColor="#FF1A1A1A"/>
         <TextBlock x:Name="LoadingText"
                    Text="Starting terminal..."
                    Foreground="#FF888888" FontSize="14"
+                   IsHitTestVisible="False"
                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
     </Grid>
 </UserControl>

@@ -6,12 +6,12 @@
         Width="720" Height="400"
         MinWidth="480" MinHeight="300"
         WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
+        AllowsTransparency="False"
+        Background="#FF1E1E1E"
         Topmost="True"
         ShowInTaskbar="False"
-        ShowActivated="False"
-        ResizeMode="CanResizeWithGrip">
+        ResizeMode="CanResizeWithGrip"
+        AllowDrop="True">
     <Border Background="#FF1E1E1E"
             CornerRadius="0,0,8,8"
             BorderBrush="#FF333333"

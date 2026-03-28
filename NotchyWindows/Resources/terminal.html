@@ -32,6 +32,14 @@
         term.open(document.getElementById('terminal'));
         fitAddon.fit();
 
+        const terminalEl = document.getElementById('terminal');
+        window.focusTerminal = function () {
+            try { term.focus(); } catch (e) { console.error(e); }
+        };
+        terminalEl.addEventListener('mousedown', () => window.focusTerminal());
+        terminalEl.addEventListener('pointerdown', () => window.focusTerminal());
+        window.focusTerminal();
+
         // Send input to C# host
         term.onData(data => {
             if (window.chrome && window.chrome.webview) {
@@ -39,28 +47,54 @@
             }
         });
 
-        // Handle resize
-        const resizeObserver = new ResizeObserver(() => {
+        // Handle resize — debounced to prevent feedback loop with ConPTY redraws.
+        // The first resize fires immediately so ConPTY gets the real terminal size.
+        let resizeTimer = null;
+        let lastCols = 0;
+        let lastRows = 0;
+        function sendResize() {
             fitAddon.fit();
-            if (window.chrome && window.chrome.webview) {
-                window.chrome.webview.postMessage(JSON.stringify({
-                    type: 'resize',
-                    cols: term.cols,
-                    rows: term.rows
-                }));
+            if (term.cols !== lastCols || term.rows !== lastRows) {
+                lastCols = term.cols;
+                lastRows = term.rows;
+                console.log(`resize: ${lastCols}x${lastRows}`);
+                if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage(JSON.stringify({
+                        type: 'resize',
+                        cols: term.cols,
+                        rows: term.rows
+                    }));
+                }
             }
+        }
+        const resizeObserver = new ResizeObserver(() => {
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(sendResize, 150);
         });
         resizeObserver.observe(document.getElementById('terminal'));
+        // Send initial size immediately
+        sendResize();
 
         // Functions called from C#
+        let writeCount = 0;
         function terminalWriteBase64(b64) {
-            const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-            term.write(bytes);
+            writeCount++;
+            try {
+                const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                console.log(`terminalWriteBase64 #${writeCount}: ${b64.length} b64 chars -> ${bytes.length} bytes`);
+                term.write(bytes);
+            } catch(e) {
+                console.error(`terminalWriteBase64 ERROR: ${e}`);
+            }
         }
 
         function terminalReset() {
+            console.log('terminalReset called');
             term.reset();
         }
+
+        // Signal that JS is ready
+        console.log('xterm.js initialized, cols=' + term.cols + ' rows=' + term.rows);
 
         function terminalGetVisibleText() {
             const buffer = term.buffer.active;

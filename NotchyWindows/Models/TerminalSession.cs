@@ -49,6 +49,13 @@ public class TerminalSession : INotifyPropertyChanged
         set { _isProjectOpen = value; OnPropertyChanged(); }
     }
 
+    private bool _isActive;
+    public bool IsActive
+    {
+        get => _isActive;
+        set { _isActive = value; OnPropertyChanged(); }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? name = null)

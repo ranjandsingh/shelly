@@ -33,8 +33,17 @@
                     <Border x:Name="TabBorder"
                             Padding="8,6" Margin="1,4" Cursor="Hand"
                             CornerRadius="4"
-                            Background="{Binding Background, RelativeSource={RelativeSource Self}}"
                             MouseLeftButtonUp="Tab_Click">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                        <Setter Property="Background" Value="#FF2A2A2A"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
                         <Border.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Rename" Click="RenameTab_Click"/>
@@ -47,9 +56,27 @@
                                     <Style TargetType="Ellipse">
                                         <Setter Property="Fill" Value="#FF555555"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsProjectOpen}" Value="True">
+                                            <!-- Status-based colors take priority -->
+                                            <DataTrigger Binding="{Binding Status}" Value="Working">
+                                                <Setter Property="Fill" Value="#FFFFA726"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
+                                                <Setter Property="Fill" Value="#FF42A5F5"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
                                                 <Setter Property="Fill" Value="#FF4CAF50"/>
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="Interrupted">
+                                                <Setter Property="Fill" Value="#FFEF5350"/>
+                                            </DataTrigger>
+                                            <!-- Idle + project open = green, idle + closed = gray -->
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding Status}" Value="Idle"/>
+                                                    <Condition Binding="{Binding IsProjectOpen}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Fill" Value="#FF4CAF50"/>
+                                            </MultiDataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Ellipse.Style>

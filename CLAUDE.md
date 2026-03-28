@@ -35,7 +35,7 @@ Notchy Windows is a Windows system tray app that provides a floating terminal pa
 
 **Terminal status detection**: `StatusParser` reads terminal output and classifies it into `TerminalStatus` states: `.Working` (spinner chars + token counter), `.WaitingForInput` (user prompt), `.Interrupted`, `.Idle`. The `Idle → TaskCompleted` transition uses a 3-second delay.
 
-**Panel**: `FloatingPanel` is a borderless, topmost, non-activating WPF Window positioned at top-center of the screen. It uses Win32 interop (WS_EX_NOACTIVATE) to avoid stealing focus.
+**Panel**: `FloatingPanel` is a borderless, topmost WPF Window positioned at top-center of the screen. It activates when shown so the embedded `WebView2` terminal can receive keyboard focus.
 
 **IDE detection**: `IdeDetector` uses `EnumWindows` + window title parsing to detect open VS Code and JetBrains IDE projects.
 
