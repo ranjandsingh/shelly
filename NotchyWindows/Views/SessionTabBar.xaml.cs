@@ -36,11 +36,44 @@ public partial class SessionTabBar : UserControl
                 : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x88, 0x88, 0x88));
     }
 
+    private void MenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu();
+
+        // Default shell submenu
+        var shellMenu = new MenuItem { Header = "Default Shell" };
+        foreach (var (label, path) in ConPtyTerminal.GetAvailableShells())
+        {
+            var shellPath = path;
+            var item = new MenuItem
+            {
+                Header = label,
+                IsChecked = string.Equals(ConPtyTerminal.DefaultShell, shellPath, System.StringComparison.OrdinalIgnoreCase)
+            };
+            item.Click += (_, _) => ConPtyTerminal.DefaultShell = shellPath;
+            shellMenu.Items.Add(item);
+        }
+        menu.Items.Add(shellMenu);
+
+        menu.Items.Add(new Separator());
+
+        var collapseItem = new MenuItem { Header = "Collapse to bar" };
+        collapseItem.Click += (_, _) =>
+        {
+            if (Window.GetWindow(this) is FloatingPanel panel)
+                panel.CollapsePanel();
+        };
+        menu.Items.Add(collapseItem);
+
+        menu.PlacementTarget = sender as Button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
     private void RenameTab_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem mi && mi.DataContext is TerminalSession session)
         {
-            // Simple rename via input dialog - will improve later
             var dialog = new Window
             {
                 Title = "Rename Session",

@@ -1,26 +1,46 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using NotchyWindows.Services;
 
 namespace NotchyWindows.Views;
 
 public partial class FloatingPanel : Window
 {
+    private bool _isExpanded;
+    private bool _isPinned;       // clicked while expanded → stays open until click outside
+    private bool _isTransitioning;
+    private DispatcherTimer? _collapseTimer;
+
+    private const double ExpandedWidth = 720;
+    private const double ExpandedHeight = 400;
+
     public FloatingPanel()
     {
         InitializeComponent();
         Loaded += OnLoaded;
 
         SessionStore.Instance.ActiveSessionChanged += OnActiveSessionChanged;
+        SessionStore.Instance.Sessions.CollectionChanged += (_, _) => UpdateCollapsedBar();
+
+        // Timer for delayed collapse on mouse leave
+        _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+        _collapseTimer.Tick += (_, _) =>
+        {
+            _collapseTimer.Stop();
+            if (_isExpanded && !_isPinned)
+                CollapsePanel();
+        };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         Logger.Log("FloatingPanel: OnLoaded");
-        PositionTopCenter();
+        PositionCenter();
+        UpdateCollapsedBar();
 
-        // Attach the initial session if one exists
         var activeId = SessionStore.Instance.ActiveSessionId;
         Logger.Log($"FloatingPanel: activeSessionId={activeId}");
         if (activeId.HasValue)
@@ -31,45 +51,150 @@ public partial class FloatingPanel : Window
     {
         Logger.Log($"FloatingPanel: ActiveSessionChanged -> {sessionId}");
         TerminalHost.AttachSession(sessionId);
+        UpdateCollapsedBar();
     }
 
-    private bool _isShowing;
+    public bool IsExpanded => _isExpanded;
 
-    public void ShowPanel()
+    public void ExpandPanel()
     {
-        _isShowing = true;
-        PositionTopCenter();
+        if (_isExpanded) return;
+        _isExpanded = true;
+        _isTransitioning = true;
+        _collapseTimer?.Stop();
+
+        SizeToContent = SizeToContent.Manual;
+        Width = ExpandedWidth;
+        Height = ExpandedHeight;
+        ResizeMode = ResizeMode.CanResizeWithGrip;
+
+        CollapsedBar.Visibility = Visibility.Collapsed;
+        ExpandedPanel.Visibility = Visibility.Visible;
+
+        PositionCenter();
         Show();
         Activate();
         IdeDetector.Instance.StartPolling();
 
-        // Route keyboard focus into WebView2/xterm (panel is no longer non-activating)
-        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(),
+            DispatcherPriority.Input);
 
-        // Brief guard so OnDeactivated doesn't fire immediately
-        Task.Delay(300).ContinueWith(_ =>
-            Dispatcher.InvokeAsync(() => _isShowing = false));
+        Task.Delay(400).ContinueWith(_ =>
+            Dispatcher.InvokeAsync(() => _isTransitioning = false));
     }
 
-    public void HidePanel()
+    public void CollapsePanel()
     {
-        Hide();
+        if (!_isExpanded) return;
+        _isExpanded = false;
+        _isPinned = false;
+
+        CollapsedBar.Visibility = Visibility.Visible;
+        ExpandedPanel.Visibility = Visibility.Collapsed;
+
+        SizeToContent = SizeToContent.WidthAndHeight;
+        ResizeMode = ResizeMode.NoResize;
+
+        PositionCenter();
 
         if (!SessionStore.Instance.IsPinned)
             IdeDetector.Instance.StopPolling();
     }
 
-    private void PositionTopCenter()
+    public void TogglePanel()
+    {
+        if (_isExpanded)
+        {
+            _isPinned = false;
+            CollapsePanel();
+        }
+        else
+        {
+            _isPinned = true; // hotkey/tray toggle always pins
+            ExpandPanel();
+        }
+    }
+
+    private void PositionCenter()
     {
         var screen = SystemParameters.WorkArea;
-        Left = (screen.Width - Width) / 2;
+        if (SizeToContent == SizeToContent.Manual)
+            Left = (screen.Width - Width) / 2;
+        else
+            Dispatcher.BeginInvoke(() =>
+            {
+                Left = (screen.Width - ActualWidth) / 2;
+            }, DispatcherPriority.Loaded);
         Top = 0;
+    }
+
+    private void UpdateCollapsedBar()
+    {
+        var session = SessionStore.Instance.ActiveSession;
+        if (session == null) return;
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            var count = SessionStore.Instance.Sessions.Count;
+            if (count > 1)
+            {
+                CollapsedBadge.Visibility = Visibility.Visible;
+                CollapsedBadgeText.Text = count.ToString();
+            }
+            else
+            {
+                CollapsedBadge.Visibility = Visibility.Collapsed;
+            }
+
+            CollapsedStatusDot.Fill = session.Status switch
+            {
+                Models.TerminalStatus.Working => new SolidColorBrush(Color.FromRgb(0xFF, 0xA7, 0x26)),
+                Models.TerminalStatus.WaitingForInput => new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
+                Models.TerminalStatus.TaskCompleted => new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)),
+                Models.TerminalStatus.Interrupted => new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50)),
+                _ => new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50))
+            };
+        });
+    }
+
+    // Hover on collapsed bar → expand (unpinned, will collapse on mouse leave)
+    private void CollapsedBar_MouseEnter(object sender, MouseEventArgs e)
+    {
+        _isPinned = false;
+        ExpandPanel();
+    }
+
+    // Click on collapsed bar → expand and pin
+    private void CollapsedBar_Click(object sender, MouseButtonEventArgs e)
+    {
+        _isPinned = true;
+        ExpandPanel();
+    }
+
+    // Any click inside expanded panel → pin it open
+    private void ExpandedPanel_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _isPinned = true;
+        _collapseTimer?.Stop();
+    }
+
+    // Mouse leaves expanded panel → collapse after delay (unless pinned)
+    private void ExpandedPanel_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_isPinned || _isTransitioning) return;
+        _collapseTimer?.Start();
     }
 
     private void DragBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 1)
             DragMove();
+    }
+
+    protected override void OnMouseEnter(MouseEventArgs e)
+    {
+        base.OnMouseEnter(e);
+        _collapseTimer?.Stop(); // cancel pending collapse if mouse re-enters
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -106,7 +231,6 @@ public partial class FloatingPanel : Window
         var success = await CheckpointManager.CreateCheckpoint(session.ProjectPath, session.ProjectName);
         if (success)
         {
-            // Brief visual feedback on the title
             Title = "Notchy — Checkpoint Saved";
             await Task.Delay(2000);
             Title = "Notchy";
@@ -116,7 +240,6 @@ public partial class FloatingPanel : Window
     protected override void OnDrop(DragEventArgs e)
     {
         base.OnDrop(e);
-
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
 
         var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
@@ -136,14 +259,13 @@ public partial class FloatingPanel : Window
     {
         base.OnDeactivated(e);
 
-        if (SessionStore.Instance.IsPinned || _isShowing)
+        if (!_isExpanded || !_isPinned || SessionStore.Instance.IsPinned || _isTransitioning)
             return;
 
-        // WebView2 hosts its own HWND. When focus moves into the embedded browser, the WPF window
-        // often deactivates even though the user is still interacting with the panel — do not auto-hide.
+        // When pinned and click outside → collapse
         Dispatcher.BeginInvoke(() =>
         {
-            if (SessionStore.Instance.IsPinned)
+            if (SessionStore.Instance.IsPinned || !_isExpanded)
                 return;
 
             try
@@ -151,16 +273,14 @@ public partial class FloatingPanel : Window
                 var pos = Mouse.GetPosition(this);
                 if (pos.X >= 0 && pos.Y >= 0 && pos.X <= ActualWidth && pos.Y <= ActualHeight)
                 {
-                    Logger.Log("FloatingPanel: OnDeactivated skipped — pointer still over panel (WebView2 focus)");
+                    // Mouse still over panel (WebView2 took focus) — pin it
+                    _isPinned = true;
                     return;
                 }
             }
-            catch
-            {
-                // ignore
-            }
+            catch { }
 
-            HidePanel();
-        }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            CollapsePanel();
+        }, DispatcherPriority.ApplicationIdle);
     }
 }

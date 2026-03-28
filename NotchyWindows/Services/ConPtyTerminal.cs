@@ -137,6 +137,12 @@ public class ConPtyTerminal : IDisposable
     {
         var shells = new List<(string, string)>();
 
+        var bash = WhichOnPath("bash.exe");
+        if (bash != null) shells.Add(("Bash", bash));
+
+        var cmd = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
+        if (File.Exists(cmd)) shells.Add(("Command Prompt (cmd)", cmd));
+
         var pwsh = WhichOnPath("pwsh.exe");
         if (pwsh != null) shells.Add(("PowerShell 7 (pwsh)", pwsh));
 
@@ -144,17 +150,18 @@ public class ConPtyTerminal : IDisposable
             "WindowsPowerShell", "v1.0", "powershell.exe");
         if (File.Exists(winPs)) shells.Add(("Windows PowerShell", winPs));
 
-        var cmd = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
-        if (File.Exists(cmd)) shells.Add(("Command Prompt (cmd)", cmd));
-
-        var gitBash = WhichOnPath("bash.exe");
-        if (gitBash != null) shells.Add(("Git Bash", gitBash));
-
         return shells;
     }
 
     private static string DetectBestShell()
     {
+        // Prefer bash, then cmd, powershell last
+        var bash = WhichOnPath("bash.exe");
+        if (bash != null) return bash;
+
+        var cmd = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
+        if (File.Exists(cmd)) return cmd;
+
         var pwsh = WhichOnPath("pwsh.exe");
         if (pwsh != null) return pwsh;
 
@@ -162,7 +169,7 @@ public class ConPtyTerminal : IDisposable
             "WindowsPowerShell", "v1.0", "powershell.exe");
         if (File.Exists(winPs)) return winPs;
 
-        return Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
+        return cmd;
     }
 
     private static string? WhichOnPath(string exe)

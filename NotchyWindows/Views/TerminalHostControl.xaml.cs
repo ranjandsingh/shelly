@@ -12,6 +12,7 @@ public partial class TerminalHostControl : UserControl
     private Guid? _activeSessionId;
     private Guid? _pendingSessionId;
     private bool _webViewReady;
+    private bool _webViewInitStarted;
 
     public TerminalHostControl()
     {
@@ -22,6 +23,8 @@ public partial class TerminalHostControl : UserControl
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (_webViewInitStarted) return; // Loaded fires again on visibility changes
+        _webViewInitStarted = true;
         Logger.Log("TerminalHostControl: OnLoaded fired");
         try
         {

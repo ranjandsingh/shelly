@@ -30,6 +30,8 @@ public partial class App : Application
         SessionPersistence.Load();
 
         _panel = new FloatingPanel();
+        // Show immediately in collapsed state (small indicator bar)
+        _panel.Show();
 
         _trayIcon = new TaskbarIcon
         {
@@ -63,8 +65,7 @@ public partial class App : Application
             item.Click += (_, _) =>
             {
                 SessionStore.Instance.SelectSession(s.Id);
-                if (_panel != null && !_panel.IsVisible)
-                    _panel.ShowPanel();
+                _panel?.ExpandPanel();
             };
             contextMenu.Items.Add(item);
         }
@@ -75,8 +76,7 @@ public partial class App : Application
         newSessionItem.Click += (_, _) =>
         {
             SessionStore.Instance.AddSession();
-            if (_panel != null && !_panel.IsVisible)
-                _panel.ShowPanel();
+            _panel?.ExpandPanel();
         };
         contextMenu.Items.Add(newSessionItem);
 
@@ -95,7 +95,7 @@ public partial class App : Application
             item.Click += (_, _) =>
             {
                 ConPtyTerminal.DefaultShell = shellPath;
-                BuildTrayContextMenu(); // rebuild to update checkmarks
+                BuildTrayContextMenu();
             };
             shellMenu.Items.Add(item);
         }
@@ -118,12 +118,7 @@ public partial class App : Application
 
     private void TogglePanel()
     {
-        if (_panel == null) return;
-
-        if (_panel.IsVisible)
-            _panel.HidePanel();
-        else
-            _panel.ShowPanel();
+        _panel?.TogglePanel();
     }
 
     protected override void OnExit(ExitEventArgs e)

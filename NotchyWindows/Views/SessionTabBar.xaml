@@ -6,11 +6,19 @@
     <DockPanel>
         <!-- Pin button -->
         <Button x:Name="PinButton" DockPanel.Dock="Left"
-                Content="📌" FontSize="12"
+                Content="&#x1F4CC;" FontSize="12"
                 Width="32" Background="Transparent" BorderThickness="0"
                 Foreground="#FF888888" Cursor="Hand"
                 Click="PinButton_Click"
                 ToolTip="Pin panel"/>
+
+        <!-- Three-dot menu -->
+        <Button x:Name="MenuButton" DockPanel.Dock="Right"
+                Content="&#x22EE;" FontSize="16" FontWeight="Bold"
+                Width="32" Background="Transparent" BorderThickness="0"
+                Foreground="#FF888888" Cursor="Hand"
+                Click="MenuButton_Click"
+                ToolTip="Menu"/>
 
         <!-- New tab button -->
         <Button DockPanel.Dock="Right"
@@ -56,7 +64,6 @@
                                     <Style TargetType="Ellipse">
                                         <Setter Property="Fill" Value="#FF555555"/>
                                         <Style.Triggers>
-                                            <!-- Status-based colors take priority -->
                                             <DataTrigger Binding="{Binding Status}" Value="Working">
                                                 <Setter Property="Fill" Value="#FFFFA726"/>
                                             </DataTrigger>
@@ -69,7 +76,6 @@
                                             <DataTrigger Binding="{Binding Status}" Value="Interrupted">
                                                 <Setter Property="Fill" Value="#FFEF5350"/>
                                             </DataTrigger>
-                                            <!-- Idle + project open = green, idle + closed = gray -->
                                             <MultiDataTrigger>
                                                 <MultiDataTrigger.Conditions>
                                                     <Condition Binding="{Binding Status}" Value="Idle"/>
