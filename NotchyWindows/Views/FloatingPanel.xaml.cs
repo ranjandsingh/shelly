@@ -90,6 +90,12 @@ public partial class FloatingPanel : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         Logger.Log("FloatingPanel: OnLoaded");
+
+        // Hide from Alt+Tab by applying WS_EX_TOOLWINDOW
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        var exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+        NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle | NativeMethods.WS_EX_TOOLWINDOW);
+
         PositionCenter();
         UpdateCollapsedBar();
 
