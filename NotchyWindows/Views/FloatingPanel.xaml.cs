@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using NotchyWindows.Services;
 
@@ -10,22 +11,25 @@ namespace NotchyWindows.Views;
 public partial class FloatingPanel : Window
 {
     private bool _isExpanded;
-    private bool _isPinned;       // clicked while expanded → stays open until click outside
+    private bool _isPinned;
     private bool _isTransitioning;
     private DispatcherTimer? _collapseTimer;
 
+    private const double CollapsedWidth = 100;
+    private const double CollapsedHeight = 28;
     private const double ExpandedWidth = 720;
     private const double ExpandedHeight = 400;
 
     public FloatingPanel()
     {
         InitializeComponent();
+        Width = CollapsedWidth;
+        Height = CollapsedHeight;
         Loaded += OnLoaded;
 
         SessionStore.Instance.ActiveSessionChanged += OnActiveSessionChanged;
         SessionStore.Instance.Sessions.CollectionChanged += (_, _) => UpdateCollapsedBar();
 
-        // Timer for delayed collapse on mouse leave
         _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _collapseTimer.Tick += (_, _) =>
         {
@@ -63,23 +67,39 @@ public partial class FloatingPanel : Window
         _isTransitioning = true;
         _collapseTimer?.Stop();
 
-        SizeToContent = SizeToContent.Manual;
+        // Set expanded size
         Width = ExpandedWidth;
         Height = ExpandedHeight;
         ResizeMode = ResizeMode.CanResizeWithGrip;
 
+        // Swap visibility
         CollapsedBar.Visibility = Visibility.Collapsed;
         ExpandedPanel.Visibility = Visibility.Visible;
+
+        // Slide down + fade in
+        ExpandedPanel.Opacity = 0;
+        ExpandedPanelTranslate.Y = -15;
+
+        var duration = TimeSpan.FromMilliseconds(220);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var fadeIn = new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        fadeIn.Completed += (_, _) => ExpandedPanel.Opacity = 1;
+
+        var slideDown = new DoubleAnimation(-15, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        slideDown.Completed += (_, _) => ExpandedPanelTranslate.Y = 0;
+
+        ExpandedPanel.BeginAnimation(OpacityProperty, fadeIn);
+        ExpandedPanelTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
 
         PositionCenter();
         Show();
         Activate();
         IdeDetector.Instance.StartPolling();
 
-        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(),
-            DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
 
-        Task.Delay(400).ContinueWith(_ =>
+        Task.Delay(350).ContinueWith(_ =>
             Dispatcher.InvokeAsync(() => _isTransitioning = false));
     }
 
@@ -89,16 +109,33 @@ public partial class FloatingPanel : Window
         _isExpanded = false;
         _isPinned = false;
 
-        CollapsedBar.Visibility = Visibility.Visible;
-        ExpandedPanel.Visibility = Visibility.Collapsed;
+        var duration = TimeSpan.FromMilliseconds(150);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
 
-        SizeToContent = SizeToContent.WidthAndHeight;
-        ResizeMode = ResizeMode.NoResize;
+        // Slide up + fade out
+        var fadeOut = new DoubleAnimation(1, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        var slideUp = new DoubleAnimation(0, -10, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
 
-        PositionCenter();
+        fadeOut.Completed += (_, _) =>
+        {
+            // Reset transform and opacity
+            ExpandedPanel.Opacity = 1;
+            ExpandedPanelTranslate.Y = 0;
 
-        if (!SessionStore.Instance.IsPinned)
-            IdeDetector.Instance.StopPolling();
+            ExpandedPanel.Visibility = Visibility.Collapsed;
+            CollapsedBar.Visibility = Visibility.Visible;
+
+            Width = CollapsedWidth;
+            Height = CollapsedHeight;
+            ResizeMode = ResizeMode.NoResize;
+            PositionCenter();
+
+            if (!SessionStore.Instance.IsPinned)
+                IdeDetector.Instance.StopPolling();
+        };
+
+        ExpandedPanel.BeginAnimation(OpacityProperty, fadeOut);
+        ExpandedPanelTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
     }
 
     public void TogglePanel()
@@ -110,7 +147,7 @@ public partial class FloatingPanel : Window
         }
         else
         {
-            _isPinned = true; // hotkey/tray toggle always pins
+            _isPinned = true;
             ExpandPanel();
         }
     }
@@ -118,13 +155,7 @@ public partial class FloatingPanel : Window
     private void PositionCenter()
     {
         var screen = SystemParameters.WorkArea;
-        if (SizeToContent == SizeToContent.Manual)
-            Left = (screen.Width - Width) / 2;
-        else
-            Dispatcher.BeginInvoke(() =>
-            {
-                Left = (screen.Width - ActualWidth) / 2;
-            }, DispatcherPriority.Loaded);
+        Left = (screen.Width - Width) / 2;
         Top = 0;
     }
 
@@ -157,28 +188,24 @@ public partial class FloatingPanel : Window
         });
     }
 
-    // Hover on collapsed bar → expand (unpinned, will collapse on mouse leave)
     private void CollapsedBar_MouseEnter(object sender, MouseEventArgs e)
     {
         _isPinned = false;
         ExpandPanel();
     }
 
-    // Click on collapsed bar → expand and pin
     private void CollapsedBar_Click(object sender, MouseButtonEventArgs e)
     {
         _isPinned = true;
         ExpandPanel();
     }
 
-    // Any click inside expanded panel → pin it open
     private void ExpandedPanel_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         _isPinned = true;
         _collapseTimer?.Stop();
     }
 
-    // Mouse leaves expanded panel → collapse after delay (unless pinned)
     private void ExpandedPanel_MouseLeave(object sender, MouseEventArgs e)
     {
         if (_isPinned || _isTransitioning) return;
@@ -194,7 +221,7 @@ public partial class FloatingPanel : Window
     protected override void OnMouseEnter(MouseEventArgs e)
     {
         base.OnMouseEnter(e);
-        _collapseTimer?.Stop(); // cancel pending collapse if mouse re-enters
+        _collapseTimer?.Stop();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -262,7 +289,6 @@ public partial class FloatingPanel : Window
         if (!_isExpanded || !_isPinned || SessionStore.Instance.IsPinned || _isTransitioning)
             return;
 
-        // When pinned and click outside → collapse
         Dispatcher.BeginInvoke(() =>
         {
             if (SessionStore.Instance.IsPinned || !_isExpanded)
@@ -273,7 +299,6 @@ public partial class FloatingPanel : Window
                 var pos = Mouse.GetPosition(this);
                 if (pos.X >= 0 && pos.Y >= 0 && pos.X <= ActualWidth && pos.Y <= ActualHeight)
                 {
-                    // Mouse still over panel (WebView2 took focus) — pin it
                     _isPinned = true;
                     return;
                 }

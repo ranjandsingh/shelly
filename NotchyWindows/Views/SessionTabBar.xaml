@@ -1,8 +1,8 @@
 <UserControl x:Class="NotchyWindows.Views.SessionTabBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Height="36"
-             Background="#FF111111">
+             Height="38"
+             Background="#FF1E1E1E">
     <DockPanel>
         <!-- Pin button -->
         <Button x:Name="PinButton" DockPanel.Dock="Left"
@@ -90,6 +90,25 @@
                             <TextBlock Text="{Binding ProjectName}"
                                        Foreground="#FFE0E0E0" FontSize="12"
                                        VerticalAlignment="Center"/>
+                            <!-- Close button: visible when more than 1 session -->
+                            <Button Content="&#x2715;" FontSize="9"
+                                    Width="16" Height="16" Margin="5,0,0,0"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="#FF666666" Cursor="Hand"
+                                    VerticalAlignment="Center"
+                                    Click="CloseTabInline_Click"
+                                    ToolTip="Close tab">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DataContext.Sessions.Count, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="1">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </StackPanel>
                     </Border>
                 </DataTemplate>

@@ -24,7 +24,8 @@ public partial class SessionTabBar : UserControl
 
     private void NewTab_Click(object sender, RoutedEventArgs e)
     {
-        SessionStore.Instance.AddSession();
+        var session = SessionStore.Instance.AddSession();
+        SessionStore.Instance.SelectSession(session.Id);
     }
 
     private void PinButton_Click(object sender, RoutedEventArgs e)
@@ -65,6 +66,12 @@ public partial class SessionTabBar : UserControl
         };
         menu.Items.Add(collapseItem);
 
+        menu.Items.Add(new Separator());
+
+        var quitItem = new MenuItem { Header = "Quit Notchy" };
+        quitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
+        menu.Items.Add(quitItem);
+
         menu.PlacementTarget = sender as Button;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         menu.IsOpen = true;
@@ -97,6 +104,15 @@ public partial class SessionTabBar : UserControl
         if (sender is MenuItem mi && mi.DataContext is TerminalSession session)
         {
             SessionStore.Instance.RemoveSession(session.Id);
+        }
+    }
+
+    private void CloseTabInline_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.DataContext is TerminalSession session)
+        {
+            if (SessionStore.Instance.Sessions.Count > 1)
+                SessionStore.Instance.RemoveSession(session.Id);
         }
     }
 }
