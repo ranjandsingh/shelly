@@ -30,6 +30,22 @@ public partial class SessionTabBar : UserControl
         SessionStore.Instance.SelectSession(session.Id);
     }
 
+    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Select folder for new terminal session"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var folderPath = dialog.FolderName;
+            var folderName = System.IO.Path.GetFileName(folderPath) ?? folderPath;
+            var session = SessionStore.Instance.AddSession(folderName, folderPath, folderPath);
+            SessionStore.Instance.SelectSession(session.Id);
+        }
+    }
+
     private void PinButton_Click(object sender, RoutedEventArgs e)
     {
         SessionStore.Instance.IsPinned = !SessionStore.Instance.IsPinned;

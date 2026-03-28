@@ -4,42 +4,69 @@
              MinHeight="40" Height="40"
              Background="#FF1E1E1E"
              ClipToBounds="False">
+    <UserControl.Resources>
+        <!-- Shared style for toolbar icon buttons: matches tab height, rounded corners, hover highlight -->
+        <Style x:Key="TabBarIconButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#FF888888"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="2,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="4,6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF2A2A2A"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF333333"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
     <DockPanel>
         <!-- Pin button -->
         <Button x:Name="PinButton" DockPanel.Dock="Left"
                 Content="&#x1F4CC;" FontSize="11"
-                Width="28" Background="Transparent" BorderThickness="0"
-                Foreground="#FF888888" Cursor="Hand"
-                VerticalContentAlignment="Center"
+                Style="{StaticResource TabBarIconButton}"
                 Click="PinButton_Click"
                 ToolTip="Pin panel"/>
 
-        <!-- Three-dot menu -->
+        <!-- Three-dot menu (rightmost) -->
         <Button x:Name="MenuButton" DockPanel.Dock="Right"
                 Content="&#x22EE;" FontSize="14" FontWeight="Bold"
-                Width="28" Background="Transparent" BorderThickness="0"
-                Foreground="#FF888888" Cursor="Hand"
-                VerticalContentAlignment="Center"
+                Style="{StaticResource TabBarIconButton}"
                 Click="MenuButton_Click"
                 ToolTip="Menu"/>
 
-        <!-- New tab button -->
+        <!-- Open folder button (next to three-dot menu) -->
         <Button DockPanel.Dock="Right"
-                Content="+" FontSize="14" FontWeight="Bold"
-                Width="28" Background="Transparent" BorderThickness="0"
-                Foreground="#FF888888" Cursor="Hand"
-                VerticalContentAlignment="Center"
-                Click="NewTab_Click"
-                ToolTip="New session"/>
+                Content="&#x1F4C2;" FontSize="12"
+                Style="{StaticResource TabBarIconButton}"
+                Click="OpenFolder_Click"
+                ToolTip="Open folder in new session"/>
 
-        <!-- Tab list -->
-        <ItemsControl x:Name="TabList"
-                      ItemsSource="{Binding Sessions}">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal"/>
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
+        <!-- Tab list + new tab button -->
+        <StackPanel Orientation="Horizontal">
+            <ItemsControl x:Name="TabList"
+                          ItemsSource="{Binding Sessions}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Border x:Name="TabBorder"
@@ -173,6 +200,13 @@
                     </Border>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
-        </ItemsControl>
+            </ItemsControl>
+
+            <!-- New tab button (right after tabs) -->
+            <Button Content="+" FontSize="14" FontWeight="Bold"
+                    Style="{StaticResource TabBarIconButton}"
+                    Click="NewTab_Click"
+                    ToolTip="New session"/>
+        </StackPanel>
     </DockPanel>
 </UserControl>
