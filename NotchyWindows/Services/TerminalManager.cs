@@ -17,9 +17,9 @@ public class TerminalManager
 
     public bool HasTerminal(Guid sessionId) => _terminals.ContainsKey(sessionId);
 
-    public void CreateTerminal(Guid sessionId, string workingDirectory, string? projectPath)
+    public void CreateTerminal(Guid sessionId, string workingDirectory, string? projectPath, short cols = 120, short rows = 30)
     {
-        Logger.Log($"TerminalManager: CreateTerminal session={sessionId}, workDir={workingDirectory}, projectPath={projectPath}");
+        Logger.Log($"TerminalManager: CreateTerminal session={sessionId}, workDir={workingDirectory}, projectPath={projectPath}, size={cols}x{rows}");
 
         var terminal = new ConPtyTerminal();
         _terminals[sessionId] = terminal;
@@ -60,8 +60,8 @@ public class TerminalManager
             }
         };
 
-        Logger.Log($"TerminalManager: calling terminal.Start({workingDirectory})");
-        if (!terminal.Start(workingDirectory))
+        Logger.Log($"TerminalManager: calling terminal.Start({workingDirectory}, {cols}x{rows})");
+        if (!terminal.Start(workingDirectory, cols, rows))
         {
             Logger.Log("TerminalManager: terminal.Start FAILED!");
             return;

@@ -134,8 +134,22 @@ public partial class TerminalHostControl : UserControl
 
         if (isNew)
         {
-            // New terminal: reset xterm, set handler first, then create terminal.
-            // Output flows directly to xterm with no replay needed.
+            // New terminal: query xterm size, reset, set handler, then create terminal
+            // at the correct size so no resize is needed (resize during shell startup deadlocks ConPTY).
+            var sizeJson = await WebView.CoreWebView2.ExecuteScriptAsync("JSON.stringify({cols:term.cols,rows:term.rows})");
+            short cols = 120, rows = 30;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(sizeJson.Trim('"').Replace("\\\"", "\""));
+                cols = (short)doc.RootElement.GetProperty("cols").GetInt32();
+                rows = (short)doc.RootElement.GetProperty("rows").GetInt32();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"TerminalHostControl: size query parse error: {ex.Message}");
+            }
+            Logger.Log($"TerminalHostControl: xterm size={cols}x{rows}");
+
             Logger.Log("TerminalHostControl: calling terminalReset()");
             await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
 
@@ -143,7 +157,7 @@ public partial class TerminalHostControl : UserControl
             manager.SetOutputHandler(sessionId, WriteOutput);
 
             Logger.Log($"TerminalHostControl: creating terminal, workDir={session.WorkingDirectory}, projectPath={session.ProjectPath}");
-            manager.CreateTerminal(sessionId, session.WorkingDirectory, session.ProjectPath);
+            manager.CreateTerminal(sessionId, session.WorkingDirectory, session.ProjectPath, cols, rows);
             session.HasStarted = true;
         }
         else

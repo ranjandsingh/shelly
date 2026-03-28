@@ -82,6 +82,27 @@ public partial class App : Application
 
         contextMenu.Items.Add(new Separator());
 
+        // Default shell submenu
+        var shellMenu = new MenuItem { Header = "Default Shell" };
+        foreach (var (label, path) in ConPtyTerminal.GetAvailableShells())
+        {
+            var shellPath = path;
+            var item = new MenuItem
+            {
+                Header = label,
+                IsChecked = string.Equals(ConPtyTerminal.DefaultShell, shellPath, StringComparison.OrdinalIgnoreCase)
+            };
+            item.Click += (_, _) =>
+            {
+                ConPtyTerminal.DefaultShell = shellPath;
+                BuildTrayContextMenu(); // rebuild to update checkmarks
+            };
+            shellMenu.Items.Add(item);
+        }
+        contextMenu.Items.Add(shellMenu);
+
+        contextMenu.Items.Add(new Separator());
+
         var quitItem = new MenuItem { Header = "Quit Notchy" };
         quitItem.Click += (_, _) =>
         {

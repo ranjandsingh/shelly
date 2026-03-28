@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using NotchyWindows.Interop;
@@ -12,7 +13,7 @@ public class ConPtyTerminal : IDisposable
     private IntPtr _processHandle;
     private IntPtr _threadHandle;
     private Thread? _readThread;
-    private bool _disposed;
+    internal bool _disposed;
     private short _cols, _rows;
 
     public event Action<byte[]>? OutputReceived;
@@ -76,9 +77,10 @@ public class ConPtyTerminal : IDisposable
 
             var si = new NativeMethods.STARTUPINFOEX();
             si.StartupInfo.cb = Marshal.SizeOf<NativeMethods.STARTUPINFOEX>();
+            si.StartupInfo.dwFlags = 0x00000100; // STARTF_USESTDHANDLES — prevents parent console handle inheritance
             si.lpAttributeList = attrList;
 
-            var shell = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
+            var shell = DefaultShell;
             Logger.Log($"ConPtyTerminal: launching shell: {shell}");
 
             var result = NativeMethods.CreateProcessW(
@@ -125,6 +127,54 @@ public class ConPtyTerminal : IDisposable
     {
         if (_disposed || _pipeWriteHandle == IntPtr.Zero) return;
         NativeMethods.WriteFile(_pipeWriteHandle, data, (uint)data.Length, out _, IntPtr.Zero);
+    }
+
+    /// <summary>Configured default shell. Set via tray menu.</summary>
+    public static string DefaultShell { get; set; } = DetectBestShell();
+
+    /// <summary>Returns all available shells as (label, path) pairs.</summary>
+    public static List<(string Label, string Path)> GetAvailableShells()
+    {
+        var shells = new List<(string, string)>();
+
+        var pwsh = WhichOnPath("pwsh.exe");
+        if (pwsh != null) shells.Add(("PowerShell 7 (pwsh)", pwsh));
+
+        var winPs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        if (File.Exists(winPs)) shells.Add(("Windows PowerShell", winPs));
+
+        var cmd = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
+        if (File.Exists(cmd)) shells.Add(("Command Prompt (cmd)", cmd));
+
+        var gitBash = WhichOnPath("bash.exe");
+        if (gitBash != null) shells.Add(("Git Bash", gitBash));
+
+        return shells;
+    }
+
+    private static string DetectBestShell()
+    {
+        var pwsh = WhichOnPath("pwsh.exe");
+        if (pwsh != null) return pwsh;
+
+        var winPs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        if (File.Exists(winPs)) return winPs;
+
+        return Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
+    }
+
+    private static string? WhichOnPath(string exe)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (path == null) return null;
+        foreach (var dir in path.Split(';'))
+        {
+            var full = Path.Combine(dir.Trim(), exe);
+            if (File.Exists(full)) return full;
+        }
+        return null;
     }
 
     public void Resize(short cols, short rows)
