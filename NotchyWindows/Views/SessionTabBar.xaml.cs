@@ -111,6 +111,14 @@ public partial class SessionTabBar : UserControl
         };
         menu.Items.Add(collapseItem);
 
+        var autoStartItem = new MenuItem
+        {
+            Header = "Start with Windows",
+            IsChecked = AutoStartManager.IsEnabled
+        };
+        autoStartItem.Click += (_, _) => AutoStartManager.Toggle();
+        menu.Items.Add(autoStartItem);
+
         var quitItem = new MenuItem { Header = "Quit Notchy" };
         quitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
         menu.Items.Add(quitItem);
