@@ -4,33 +4,38 @@
         xmlns:views="clr-namespace:NotchyWindows.Views"
         Title="Notchy"
         WindowStyle="None"
-        AllowsTransparency="False"
-        Background="#FF1E1E1E"
+        AllowsTransparency="True"
+        Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
         AllowDrop="True">
 
     <Grid>
-        <!-- Collapsed state: small notch indicator -->
+        <!-- Collapsed state: transparent pill -->
         <Border x:Name="CollapsedBar"
-                Background="#FF1A1A1A"
-                BorderBrush="#FF333333"
-                BorderThickness="1,0,1,1"
-                CornerRadius="0,0,6,6"
-                Padding="10,4"
+                Background="#40000000"
+                BorderBrush="#25FFFFFF"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="10,0"
+                Margin="0,6,0,0"
                 Cursor="Hand"
                 MouseEnter="CollapsedBar_MouseEnter"
                 MouseLeftButtonUp="CollapsedBar_Click">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="2"
+                                  Opacity="0.4" Direction="270"/>
+            </Border.Effect>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                         HorizontalAlignment="Center">
-                <!-- Status dot (idle/default) -->
+                <!-- Status dot (idle/default) — hidden when idle -->
                 <Ellipse x:Name="CollapsedStatusDot" Width="8" Height="8"
-                         Fill="#FF4CAF50" Margin="0,0,6,0"/>
+                         Fill="#FF4CAF50" Visibility="Collapsed"/>
 
                 <!-- Spinner (working) — spinning arc -->
                 <Canvas x:Name="CollapsedSpinner" Width="10" Height="10"
-                        Margin="0,0,6,0" Visibility="Collapsed"
+                        Visibility="Collapsed"
                         RenderTransformOrigin="0.5,0.5">
                     <Canvas.RenderTransform>
                         <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
@@ -41,7 +46,7 @@
 
                 <!-- Alert dot (waiting for input) — pulsing -->
                 <Ellipse x:Name="CollapsedAlertDot" Width="8" Height="8"
-                         Fill="#FFFFA726" Margin="0,0,6,0" Visibility="Collapsed"
+                         Fill="#FFFFA726" Visibility="Collapsed"
                          RenderTransformOrigin="0.5,0.5">
                     <Ellipse.RenderTransform>
                         <ScaleTransform x:Name="AlertPulse" ScaleX="1" ScaleY="1"/>
@@ -50,35 +55,20 @@
 
                 <!-- Checkmark (task completed) -->
                 <Canvas x:Name="CollapsedCheckmark" Width="10" Height="10"
-                        Margin="0,0,6,0" Visibility="Collapsed">
+                        Visibility="Collapsed">
                     <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
                           StrokeThickness="2" StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                 </Canvas>
-
-                <TextBlock Text="Terminal"
-                           Foreground="#FFE0E0E0" FontSize="11"
-                           VerticalAlignment="Center"/>
-                <Border x:Name="CollapsedBadge"
-                        Background="#FFED8B00"
-                        CornerRadius="7"
-                        Padding="5,1"
-                        Margin="6,0,0,0"
-                        Visibility="Collapsed">
-                    <TextBlock x:Name="CollapsedBadgeText"
-                               Text="2"
-                               Foreground="#FFFFFFFF" FontSize="10" FontWeight="Bold"
-                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                </Border>
             </StackPanel>
         </Border>
 
         <!-- Expanded state: full terminal panel -->
         <Border x:Name="ExpandedPanel"
                 Background="#FF1E1E1E"
-                CornerRadius="0,0,8,8"
+                CornerRadius="8"
                 BorderBrush="#FF333333"
-                BorderThickness="0"
+                BorderThickness="1"
                 Visibility="Collapsed"
                 RenderTransformOrigin="0.5,0"
                 MouseEnter="ExpandedPanel_MouseEnter"

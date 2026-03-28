@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -17,8 +18,8 @@ public partial class FloatingPanel : Window
     private DispatcherTimer? _hoverCollapseTimer;
     private DateTime? _outsideSince; // tracks when cursor first left the window
 
-    private const double CollapsedWidth = 100;
-    private const double CollapsedHeight = 28;
+    private const double CollapsedWidth = 48;
+    private const double CollapsedHeight = 18;
     private const double ExpandedWidth = 720;
     private const double ExpandedHeight = 400;
 
@@ -69,6 +70,11 @@ public partial class FloatingPanel : Window
 
         SessionStore.Instance.ActiveSessionChanged += OnActiveSessionChanged;
         SessionStore.Instance.Sessions.CollectionChanged += (_, _) => UpdateCollapsedBar();
+        SessionStore.Instance.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(SessionStore.NotchAtBottom))
+                Dispatcher.InvokeAsync(PositionCenter);
+        };
 
         // Listen for status changes on all sessions
         foreach (var s in SessionStore.Instance.Sessions)
@@ -102,15 +108,17 @@ public partial class FloatingPanel : Window
 
     public bool IsExpanded => _isExpanded;
 
-    /// <summary>Expand from notch to full panel. Mirrors the original ShowPanel logic.</summary>
-    public void ExpandPanel()
+    /// <summary>Expand from notch to full panel.</summary>
+    /// <param name="pinOpen">If true, panel stays open until user clicks outside (used for hotkey/explicit activation).</param>
+    public void ExpandPanel(bool pinOpen = false)
     {
         if (_isExpanded) return;
         _isExpanded = true;
         _isShowing = true;
-        _hasInteracted = false;
+        _hasInteracted = pinOpen;
         _outsideSince = null;
-        _hoverCollapseTimer?.Start(); // start polling cursor position
+        if (!pinOpen)
+            _hoverCollapseTimer?.Start(); // only auto-collapse on hover-triggered expand
 
         Width = ExpandedWidth;
         Height = ExpandedHeight;
@@ -188,14 +196,14 @@ public partial class FloatingPanel : Window
         if (_isExpanded)
             CollapsePanel();
         else
-            ExpandPanel();
+            ExpandPanel(pinOpen: true);
     }
 
     private void PositionCenter()
     {
         var screen = SystemParameters.WorkArea;
         Left = (screen.Width - Width) / 2;
-        Top = 0;
+        Top = SessionStore.Instance.NotchAtBottom ? screen.Height - Height : 0;
     }
 
     // --- Claude status features ---
@@ -225,15 +233,9 @@ public partial class FloatingPanel : Window
 
     private void UpdateCollapsedBar()
     {
-        var session = SessionStore.Instance.ActiveSession;
-        if (session == null) return;
-
         Dispatcher.InvokeAsync(() =>
         {
             var sessions = SessionStore.Instance.Sessions;
-            var count = sessions.Count;
-            CollapsedBadge.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
-            if (count > 1) CollapsedBadgeText.Text = count.ToString();
 
             // Determine highest-priority status across ALL sessions
             // Priority: WaitingForInput > Working > TaskCompleted > Interrupted > Idle
@@ -250,13 +252,14 @@ public partial class FloatingPanel : Window
                     overallStatus = Models.TerminalStatus.Interrupted;
             }
 
-            // Show the right indicator, hide others
+            // Hide all indicators first
             CollapsedStatusDot.Visibility = Visibility.Collapsed;
             CollapsedSpinner.Visibility = Visibility.Collapsed;
             CollapsedAlertDot.Visibility = Visibility.Collapsed;
             CollapsedCheckmark.Visibility = Visibility.Collapsed;
             StopAnimations();
 
+            // Only show indicators when something is actively happening (not Idle)
             switch (overallStatus)
             {
                 case Models.TerminalStatus.Working:
@@ -274,10 +277,7 @@ public partial class FloatingPanel : Window
                     CollapsedStatusDot.Visibility = Visibility.Visible;
                     CollapsedStatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50));
                     break;
-                default: // Idle
-                    CollapsedStatusDot.Visibility = Visibility.Visible;
-                    CollapsedStatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
-                    break;
+                // Idle: no indicator shown — just the transparent pill
             }
         });
     }
@@ -371,13 +371,40 @@ public partial class FloatingPanel : Window
     protected override void OnDrop(DragEventArgs e)
     {
         base.OnDrop(e);
+        e.Handled = true;
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
         if (paths == null) return;
+
         foreach (var path in paths)
         {
             if (Directory.Exists(path))
-                SessionStore.Instance.AddSession(Path.GetFileName(path), path, path);
+            {
+                // Folder: create a new terminal session in that directory and switch to it
+                // Skip if a session with this path already exists
+                var existing = SessionStore.Instance.Sessions
+                    .FirstOrDefault(s => string.Equals(s.ProjectPath, path, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                {
+                    SessionStore.Instance.SelectSession(existing.Id);
+                }
+                else
+                {
+                    var session = SessionStore.Instance.AddSession(Path.GetFileName(path), path, path);
+                    SessionStore.Instance.SelectSession(session.Id);
+                }
+                if (!_isExpanded) ExpandPanel();
+            }
+            else if (File.Exists(path))
+            {
+                // File: paste the file path into the active terminal
+                var activeId = SessionStore.Instance.ActiveSessionId;
+                if (activeId.HasValue && TerminalManager.Instance.HasTerminal(activeId.Value))
+                {
+                    var quotedPath = path.Contains(' ') ? $"\"{path}\"" : path;
+                    TerminalManager.Instance.WriteInput(activeId.Value, quotedPath);
+                }
+            }
         }
     }
 

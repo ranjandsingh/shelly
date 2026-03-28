@@ -12,6 +12,9 @@ public partial class App : Application
     private static Mutex? _singleInstanceMutex;
     private TaskbarIcon? _trayIcon;
     private FloatingPanel? _panel;
+    private Interop.HotkeyManager? _hotkeyManager;
+
+    public Interop.HotkeyManager? HotkeyManager => _hotkeyManager;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -47,9 +50,9 @@ public partial class App : Application
         // Rebuild the context menu when sessions change so the list stays current
         SessionStore.Instance.Sessions.CollectionChanged += (_, _) => BuildTrayContextMenu();
 
-        var hotkeyManager = new Interop.HotkeyManager();
-        hotkeyManager.HotkeyPressed += () => TogglePanel();
-        hotkeyManager.Register();
+        _hotkeyManager = new Interop.HotkeyManager();
+        _hotkeyManager.HotkeyPressed += () => TogglePanel();
+        _hotkeyManager.Register();
     }
 
     private void BuildTrayContextMenu()

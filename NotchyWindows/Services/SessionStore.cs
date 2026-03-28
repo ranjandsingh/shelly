@@ -28,6 +28,14 @@ public class SessionStore : INotifyPropertyChanged
         set { _isPinned = value; OnPropertyChanged(); }
     }
 
+    private bool _notchAtBottom;
+    /// <summary>When true, the collapsed pill and expanded panel anchor to the bottom of the screen.</summary>
+    public bool NotchAtBottom
+    {
+        get => _notchAtBottom;
+        set { _notchAtBottom = value; OnPropertyChanged(); }
+    }
+
     private SessionStore()
     {
         // Create a default session
