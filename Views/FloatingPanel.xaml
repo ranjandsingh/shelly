@@ -135,7 +135,7 @@
                 <Border Grid.Row="2" Background="#FF333333"/>
 
                 <!-- Terminal area -->
-                <Border Grid.Row="3" Background="#FF1A1A1A" CornerRadius="0,0,7,7">
+                <Border Grid.Row="3" Background="#FF1A1A1A" CornerRadius="0,0,7,7" Padding="1,2,1,5">
                     <views:TerminalHostControl x:Name="TerminalHost"/>
                 </Border>
             </Grid>
