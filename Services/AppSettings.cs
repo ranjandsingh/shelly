@@ -15,6 +15,8 @@ public static class AppSettings
         public uint? HotkeyVk { get; set; }
         public bool RememberSessions { get; set; } = true;
         public bool AutoCheckUpdates { get; set; } = true;
+        public bool AutoLaunchClaude { get; set; } = true;
+        public bool ShowHints { get; set; } = true;
         public string? LastUpdateCheck { get; set; }
         public string? DismissedUpdateVersion { get; set; }
     }
@@ -67,6 +69,24 @@ public static class AppSettings
     {
         var data = LoadData();
         data.RememberSessions = value;
+        SaveData(data);
+    }
+
+    public static bool LoadAutoLaunchClaude() => LoadData().AutoLaunchClaude;
+
+    public static void SaveAutoLaunchClaude(bool value)
+    {
+        var data = LoadData();
+        data.AutoLaunchClaude = value;
+        SaveData(data);
+    }
+
+    public static bool LoadShowHints() => LoadData().ShowHints;
+
+    public static void SaveShowHints(bool value)
+    {
+        var data = LoadData();
+        data.ShowHints = value;
         SaveData(data);
     }
 

@@ -21,7 +21,6 @@ public partial class FloatingPanel : Window
     private DateTime? _outsideSince; // tracks when cursor first left the window
     private bool _iconVisible; // tracks whether the mascot icon is currently shown
     private bool _greetingActive; // prevents UpdateCollapsedBar from hiding during greeting
-
     private const double CollapsedWidth = 48;
     private const double CollapsedWidthWithIcon = 80;
     private const double CollapsedWidthGreeting = 116;
@@ -289,6 +288,11 @@ public partial class FloatingPanel : Window
         // IDE detection disabled — title-based detection doesn't reliably resolve full paths
         // IdeDetector.Instance.StartPolling();
 
+        // Clear TaskCompleted when the user opens the panel to see the session
+        var activeId = SessionStore.Instance.ActiveSessionId;
+        if (activeId.HasValue)
+            Services.StatusParser.AcknowledgeCompletion(activeId.Value);
+
         // Focus terminal
         Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
 
@@ -390,7 +394,7 @@ public partial class FloatingPanel : Window
             !_isExpanded)
         {
             _lastAutoExpandStatus = session.Status;
-            Dispatcher.InvokeAsync(() => ExpandPanel());
+            Dispatcher.InvokeAsync(() => ExpandPanel(pinOpen: true));
         }
         else if (sender is Models.TerminalSession s2)
         {

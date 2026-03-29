@@ -55,14 +55,15 @@
                           StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                 </Canvas>
 
-                <!-- Alert dot (waiting for input) — pulsing -->
-                <Ellipse x:Name="CollapsedAlertDot" Width="8" Height="8"
-                         Fill="#FFFFA726" Visibility="Collapsed"
-                         RenderTransformOrigin="0.5,0.5">
-                    <Ellipse.RenderTransform>
+                <!-- Alert triangle (waiting for input) — pulsing yellow -->
+                <Canvas x:Name="CollapsedAlertDot" Width="10" Height="10"
+                        Visibility="Collapsed"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Canvas.RenderTransform>
                         <ScaleTransform x:Name="AlertPulse" ScaleX="1" ScaleY="1"/>
-                    </Ellipse.RenderTransform>
-                </Ellipse>
+                    </Canvas.RenderTransform>
+                    <Path Data="M5,1 L9.5,9 L0.5,9 Z" Fill="#FFFFA726"/>
+                </Canvas>
 
                 <!-- Checkmark (task completed) -->
                 <Canvas x:Name="CollapsedCheckmark" Width="10" Height="10"
@@ -71,6 +72,7 @@
                           StrokeThickness="2" StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                 </Canvas>
+
             </StackPanel>
         </Border>
 

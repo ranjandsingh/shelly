@@ -10,10 +10,69 @@ namespace Shelly.Views;
 
 public partial class SessionTabBar : UserControl
 {
+    private static readonly string[] Hints =
+    [
+        "Ctrl+` to toggle panel",
+        "Drop a folder to open it",
+        "Right-click tab to rename",
+        "Pin to keep panel open",
+        "Ctrl+S saves a git snapshot",
+        "Ctrl+T opens a new session",
+        "Ctrl+W closes current tab",
+        "Drag the top bar to move",
+        "Drop a file to paste its path",
+        "Customize hotkey in Settings",
+        "Notch can go top or bottom",
+        "Auto-expands when Claude asks",
+    ];
+
+    private int _hintIndex;
+    private System.Windows.Threading.DispatcherTimer? _hintTimer;
+
     public SessionTabBar()
     {
         InitializeComponent();
         DataContext = SessionStore.Instance;
+
+        _hintIndex = Random.Shared.Next(Hints.Length);
+        UpdateHintVisibility();
+
+        _hintTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(12)
+        };
+        _hintTimer.Tick += (_, _) =>
+        {
+            _hintIndex = (_hintIndex + 1) % Hints.Length;
+            var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
+            fadeOut.Completed += (_, _) =>
+            {
+                HintText.Text = $"Tip: {Hints[_hintIndex]}";
+                var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
+                HintText.BeginAnimation(OpacityProperty, fadeIn);
+            };
+            HintText.BeginAnimation(OpacityProperty, fadeOut);
+        };
+        if (AppSettings.LoadShowHints())
+            _hintTimer.Start();
+    }
+
+    private void UpdateHintVisibility()
+    {
+        if (!AppSettings.LoadShowHints())
+        {
+            HintText.Visibility = Visibility.Collapsed;
+            return;
+        }
+        HintText.Text = $"Tip: {Hints[_hintIndex]}";
+        HintText.Visibility = Visibility.Visible;
+    }
+
+    private void HintText_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Hide hint if squeezed too narrow to be readable
+        if (HintText.ActualWidth < 60)
+            HintText.Visibility = Visibility.Collapsed;
     }
 
     private void Tab_Click(object sender, MouseButtonEventArgs e)
@@ -43,6 +102,10 @@ public partial class SessionTabBar : UserControl
             var folderName = System.IO.Path.GetFileName(folderPath) ?? folderPath;
             var session = SessionStore.Instance.AddSession(folderName, folderPath, folderPath);
             SessionStore.Instance.SelectSession(session.Id);
+
+            // Re-expand the panel (folder dialog steals focus and triggers collapse)
+            if (Window.GetWindow(this) is FloatingPanel panel)
+                panel.ExpandPanel(pinOpen: true);
         }
     }
 
@@ -59,6 +122,28 @@ public partial class SessionTabBar : UserControl
     {
         var menu = new ContextMenu();
 
+        // --- View ---
+        var collapseItem = new MenuItem { Header = "Collapse to bar" };
+        collapseItem.Click += (_, _) =>
+        {
+            if (Window.GetWindow(this) is FloatingPanel panel)
+                panel.CollapsePanel();
+        };
+        menu.Items.Add(collapseItem);
+
+        var positionItem = new MenuItem
+        {
+            Header = SessionStore.Instance.NotchAtBottom ? "Move notch to top" : "Move notch to bottom"
+        };
+        positionItem.Click += (_, _) =>
+        {
+            SessionStore.Instance.NotchAtBottom = !SessionStore.Instance.NotchAtBottom;
+        };
+        menu.Items.Add(positionItem);
+
+        // --- Settings ---
+        var settingsMenu = new MenuItem { Header = "Settings" };
+
         // Default shell submenu
         var shellMenu = new MenuItem { Header = "Default Shell" };
         foreach (var (label, path) in ConPtyTerminal.GetAvailableShells())
@@ -72,17 +157,7 @@ public partial class SessionTabBar : UserControl
             item.Click += (_, _) => ConPtyTerminal.DefaultShell = shellPath;
             shellMenu.Items.Add(item);
         }
-        menu.Items.Add(shellMenu);
-
-        var positionItem = new MenuItem
-        {
-            Header = SessionStore.Instance.NotchAtBottom ? "Move notch to top" : "Move notch to bottom"
-        };
-        positionItem.Click += (_, _) =>
-        {
-            SessionStore.Instance.NotchAtBottom = !SessionStore.Instance.NotchAtBottom;
-        };
-        menu.Items.Add(positionItem);
+        settingsMenu.Items.Add(shellMenu);
 
         // Keybinding option
         var hkMgr = (Application.Current as App)?.HotkeyManager;
@@ -94,22 +169,36 @@ public partial class SessionTabBar : UserControl
             Header = currentBinding != null ? $"Keybinding: {currentBinding}" : "Set custom keybinding"
         };
         keybindItem.Click += (_, _) => ShowKeybindingDialog();
-        menu.Items.Add(keybindItem);
+        settingsMenu.Items.Add(keybindItem);
 
         if (currentBinding != null)
         {
             var clearItem = new MenuItem { Header = "Remove custom keybinding" };
             clearItem.Click += (_, _) => hkMgr?.ClearCustomHotkey();
-            menu.Items.Add(clearItem);
+            settingsMenu.Items.Add(clearItem);
         }
 
-        var collapseItem = new MenuItem { Header = "Collapse to bar" };
-        collapseItem.Click += (_, _) =>
+        var autoLaunchItem = new MenuItem
         {
-            if (Window.GetWindow(this) is FloatingPanel panel)
-                panel.CollapsePanel();
+            Header = "Auto-launch Claude",
+            IsChecked = AppSettings.LoadAutoLaunchClaude()
         };
-        menu.Items.Add(collapseItem);
+        autoLaunchItem.Click += (_, _) => AppSettings.SaveAutoLaunchClaude(!AppSettings.LoadAutoLaunchClaude());
+        settingsMenu.Items.Add(autoLaunchItem);
+
+        var showHintsItem = new MenuItem
+        {
+            Header = "Show hints",
+            IsChecked = AppSettings.LoadShowHints()
+        };
+        showHintsItem.Click += (_, _) =>
+        {
+            var enabled = !AppSettings.LoadShowHints();
+            AppSettings.SaveShowHints(enabled);
+            if (enabled) { UpdateHintVisibility(); _hintTimer?.Start(); }
+            else { HintText.Visibility = Visibility.Collapsed; _hintTimer?.Stop(); }
+        };
+        settingsMenu.Items.Add(showHintsItem);
 
         var autoStartItem = new MenuItem
         {
@@ -117,7 +206,35 @@ public partial class SessionTabBar : UserControl
             IsChecked = AutoStartManager.IsEnabled
         };
         autoStartItem.Click += (_, _) => AutoStartManager.Toggle();
-        menu.Items.Add(autoStartItem);
+        settingsMenu.Items.Add(autoStartItem);
+
+        menu.Items.Add(settingsMenu);
+
+        // --- App ---
+        var updateItem = new MenuItem { Header = "Check for updates" };
+        updateItem.Click += async (_, _) =>
+        {
+            var info = await UpdateChecker.CheckForUpdateAsync(force: true);
+            if (info != null)
+            {
+                var result = System.Windows.MessageBox.Show(
+                    $"Shelly {info.TagName} is available.\nYou're on v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)}.\n\nInstall now?",
+                    "Update Available",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Information);
+                if (result == System.Windows.MessageBoxResult.Yes)
+                    await UpdateChecker.ApplyUpdateAsync(info);
+            }
+            else
+            {
+                System.Windows.MessageBox.Show(
+                    "You're on the latest version.",
+                    "No Updates",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+            }
+        };
+        menu.Items.Add(updateItem);
 
         var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();

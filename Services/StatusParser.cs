@@ -24,6 +24,7 @@ public static class StatusParser
         // Fast-path: detect completion message ("✻ Cogitated for 4m 2s") immediately
         if (session.Status == TerminalStatus.Working && CompletionPattern.IsMatch(text))
         {
+            Logger.Log("StatusParser: completion detected in raw output");
             MarkTaskCompleted(sessionId);
             return;
         }
@@ -62,57 +63,65 @@ public static class StatusParser
         if (lines.Length == 0) return TerminalStatus.Idle;
 
         // Bottom 3 lines = status bar area (current state indicator)
-        var bottom3 = string.Join("\n", lines.TakeLast(3));
+        var bottom3Lines = lines.TakeLast(3).ToArray();
+        var bottom3 = string.Join("\n", bottom3Lines);
         // Bottom 8 lines = multi-line prompts, approval dialogs
         var bottom8 = string.Join("\n", lines.TakeLast(8));
+
+        TerminalStatus result;
 
         // === INTERRUPTED (specific, check early) ===
         if (bottom8.Contains("Interrupted", StringComparison.OrdinalIgnoreCase) &&
             !bottom8.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Interrupted;
+        { result = TerminalStatus.Interrupted; goto done; }
 
         // === WORKING: only from bottom 3 lines (status bar) ===
         // Stale "esc to interrupt" higher up is from a previous work phase.
         if (bottom3.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
+        { result = TerminalStatus.Working; goto done; }
         if (bottom3.Contains("Clauding", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
+        { result = TerminalStatus.Working; goto done; }
         if (bottom3.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
+        { result = TerminalStatus.Working; goto done; }
         if (bottom3.Contains("Reading") && bottom3.Contains("file"))
-            return TerminalStatus.Working;
+        { result = TerminalStatus.Working; goto done; }
         if (bottom3.Contains("Writing") && bottom3.Contains("file"))
-            return TerminalStatus.Working;
+        { result = TerminalStatus.Working; goto done; }
 
         // === COMPLETED: "✻ Cogitated for 4m 2s" etc. ===
         // Spinner char + "for" + time duration = Claude just finished a task.
         // Check before WaitingForInput so stale approval text doesn't win.
         var bottom5 = string.Join("\n", lines.TakeLast(5));
         if (CompletionPattern.IsMatch(bottom5))
-            return TerminalStatus.Idle;
+        { result = TerminalStatus.Idle; goto done; }
 
         // === WAITING FOR INPUT: from bottom 8 lines ===
         // Edit approval
         if (bottom8.Contains("Esc to cancel", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
+        { result = TerminalStatus.WaitingForInput; goto done; }
         if (bottom8.Contains("Do you want to proceed", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
+        { result = TerminalStatus.WaitingForInput; goto done; }
         if (bottom8.Contains("Yes / No", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
+        { result = TerminalStatus.WaitingForInput; goto done; }
         // Tool permission prompts: "(Y)es / (N)o"
         if (bottom8.Contains("(Y)es", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
+        { result = TerminalStatus.WaitingForInput; goto done; }
         // Plan mode approval menu
         if (bottom8.Contains("Keep planning", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
+        { result = TerminalStatus.WaitingForInput; goto done; }
         // Selection menu with ❯ and numbered options (plan approval, etc.)
         foreach (var line in lines.TakeLast(8))
         {
             if (line.Contains("❯") && line.Any(char.IsDigit))
-                return TerminalStatus.WaitingForInput;
+            { result = TerminalStatus.WaitingForInput; goto done; }
         }
 
-        return TerminalStatus.Idle;
+        result = TerminalStatus.Idle;
+
+        done:
+        if (result != current)
+            Logger.Log($"StatusParser: {current} → {result}");
+        return result;
     }
 
     private static void UpdateStatus(Guid sessionId, TerminalStatus newStatus)
@@ -123,12 +132,16 @@ public static class StatusParser
         var oldStatus = session.Status;
         if (newStatus == oldStatus) return;
 
+        // Don't let polling clear TaskCompleted — the 3s clear timer handles that
+        if (oldStatus == TerminalStatus.TaskCompleted && newStatus == TerminalStatus.Idle)
+            return;
+
         // Sticky: don't drop from Working to Idle too quickly (polling can miss spinner)
         if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
         {
             if (_lastWorkingTime.TryGetValue(sessionId, out var lastWork) &&
                 (DateTime.UtcNow - lastWork).TotalSeconds < 2)
-                return; // stay Working for at least 2s
+                return;
         }
 
         if (newStatus == TerminalStatus.Working)
@@ -143,10 +156,16 @@ public static class StatusParser
             if (_lastWorkingTime.TryGetValue(sessionId, out var start) &&
                 (DateTime.UtcNow - start).TotalSeconds > 10)
             {
-                StartCompletionTimer(sessionId);
+                if (!_completionTimers.ContainsKey(sessionId))
+                {
+                    Logger.Log($"StatusParser: starting completion timer (worked {(DateTime.UtcNow - start).TotalSeconds:F0}s)");
+                    StartCompletionTimer(sessionId);
+                }
                 return;
             }
         }
+
+        Logger.Log($"StatusParser: {oldStatus} → {newStatus}");
 
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
@@ -171,18 +190,19 @@ public static class StatusParser
         {
             session.Status = TerminalStatus.TaskCompleted;
             SoundPlayer.PlayTaskCompleted();
-
-            var clearTimer = new System.Timers.Timer(3000) { AutoReset = false };
-            clearTimer.Elapsed += (_, _) =>
-            {
-                Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    if (session.Status == TerminalStatus.TaskCompleted)
-                        session.Status = TerminalStatus.Idle;
-                });
-            };
-            clearTimer.Start();
         });
+    }
+
+    /// <summary>Clear TaskCompleted status when the user views the session.</summary>
+    public static void AcknowledgeCompletion(Guid sessionId)
+    {
+        var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session == null) return;
+        if (session.Status == TerminalStatus.TaskCompleted)
+        {
+            Logger.Log("StatusParser: TaskCompleted acknowledged");
+            session.Status = TerminalStatus.Idle;
+        }
     }
 
     private static void StartCompletionTimer(Guid sessionId)
@@ -199,18 +219,6 @@ public static class StatusParser
                 {
                     session.Status = TerminalStatus.TaskCompleted;
                     SoundPlayer.PlayTaskCompleted();
-
-                    // Auto-clear after 3 seconds
-                    var clearTimer = new System.Timers.Timer(3000) { AutoReset = false };
-                    clearTimer.Elapsed += (_, _) =>
-                    {
-                        Application.Current.Dispatcher.InvokeAsync(() =>
-                        {
-                            if (session.Status == TerminalStatus.TaskCompleted)
-                                session.Status = TerminalStatus.Idle;
-                        });
-                    };
-                    clearTimer.Start();
                 });
             }
         };
