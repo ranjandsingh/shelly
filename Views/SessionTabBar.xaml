@@ -67,164 +67,187 @@
 
         <!-- Tab list + new tab button + hint -->
         <DockPanel>
-            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-            <ItemsControl x:Name="TabList"
-                          ItemsSource="{Binding Sessions}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Border x:Name="TabBorder"
-                            Padding="10,8" Margin="2,4" Cursor="Hand"
-                            CornerRadius="4"
-                            MouseLeftButtonUp="Tab_Click">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                        <Setter Property="Background" Value="#FF2A2A2A"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <Border.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Rename" Click="RenameTab_Click"/>
-                                <MenuItem Header="Close" Click="CloseTab_Click"/>
-                            </ContextMenu>
-                        </Border.ContextMenu>
-                        <StackPanel Orientation="Horizontal">
-                            <!-- Status icon per tab -->
-                            <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
-                                <!-- Default dot: idle/working/interrupted -->
-                                <!-- Idle/Interrupted: colored dot -->
-                                <Ellipse Width="6" Height="6">
-                                    <Ellipse.Style>
-                                        <Style TargetType="Ellipse">
-                                            <Setter Property="Fill" Value="#FF4CAF50"/>
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="Working">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Interrupted">
-                                                    <Setter Property="Fill" Value="#FFEF5350"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Ellipse.Style>
-                                </Ellipse>
-                                <!-- Working: spinning orange arc -->
-                                <Canvas Width="10" Height="10" RenderTransformOrigin="0.5,0.5">
-                                    <Canvas.Style>
-                                        <Style TargetType="Canvas">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="Working">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Canvas.Style>
-                                    <Canvas.RenderTransform>
-                                        <RotateTransform Angle="0"/>
-                                    </Canvas.RenderTransform>
-                                    <Canvas.Triggers>
-                                        <EventTrigger RoutedEvent="Loaded">
-                                            <BeginStoryboard>
-                                                <Storyboard RepeatBehavior="Forever">
-                                                    <DoubleAnimation Storyboard.TargetProperty="(Canvas.RenderTransform).(RotateTransform.Angle)"
-                                                                     From="0" To="360" Duration="0:0:0.8"/>
-                                                </Storyboard>
-                                            </BeginStoryboard>
-                                        </EventTrigger>
-                                    </Canvas.Triggers>
-                                    <Path Data="M5,0 A5,5 0 1 1 0,5" Stroke="#FFFFA726"
-                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                </Canvas>
-                                <!-- WaitingForInput: warning triangle -->
-                                <Path Data="M5,1 L9,9 L1,9 Z" Stroke="#FFFFA726" StrokeThickness="1.5"
-                                      StrokeLineJoin="Round" Fill="Transparent">
-                                    <Path.Style>
-                                        <Style TargetType="Path">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Path.Style>
-                                </Path>
-                                <!-- TaskCompleted: checkmark -->
-                                <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
-                                      StrokeThickness="1.5" StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round" StrokeLineJoin="Round">
-                                    <Path.Style>
-                                        <Style TargetType="Path">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Path.Style>
-                                </Path>
-                            </Grid>
-                            <TextBlock Text="{Binding ProjectName}"
-                                       Foreground="#FFE0E0E0" FontSize="12"
-                                       VerticalAlignment="Center"/>
-                            <!-- Close button: visible when more than 1 session -->
-                            <Button Content="&#x2715;" FontSize="9"
-                                    Width="16" Height="16" Margin="5,0,0,0"
-                                    Background="Transparent" BorderThickness="0"
-                                    Foreground="#FF666666" Cursor="Hand"
-                                    VerticalAlignment="Center"
-                                    Click="CloseTabInline_Click"
-                                    ToolTip="Close tab">
-                                <Button.Style>
-                                    <Style TargetType="Button">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding DataContext.Sessions.Count, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="1">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
-                        </StackPanel>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <!-- New tab button (right after tabs) -->
-            <Button Content="+" FontSize="14" FontWeight="Bold"
+            <!-- Scroll-left chevron (visible only when tabs overflow) -->
+            <Button x:Name="ScrollLeftBtn" DockPanel.Dock="Left"
+                    Content="&#x276E;" FontSize="11"
                     Style="{StaticResource TabBarIconButton}"
-                    Click="NewTab_Click"
-                    ToolTip="New session"/>
-        </StackPanel>
+                    Visibility="Collapsed"
+                    Click="ScrollLeft_Click"
+                    ToolTip="Scroll tabs left"/>
+
+            <!-- Scroll-right chevron (visible only when tabs overflow) -->
+            <Button x:Name="ScrollRightBtn" DockPanel.Dock="Left"
+                    Content="&#x276F;" FontSize="11"
+                    Style="{StaticResource TabBarIconButton}"
+                    Visibility="Collapsed"
+                    Click="ScrollRight_Click"
+                    ToolTip="Scroll tabs right"/>
 
             <!-- Hint text — fills remaining space, right-aligned, hides if no room -->
-            <TextBlock x:Name="HintText"
+            <TextBlock x:Name="HintText" DockPanel.Dock="Right"
                        Foreground="#50FFFFFF" FontSize="10"
                        VerticalAlignment="Center"
                        HorizontalAlignment="Right"
                        TextTrimming="CharacterEllipsis"
                        Margin="8,0,6,0"
                        SizeChanged="HintText_SizeChanged"/>
+
+            <!-- Scrollable tab area -->
+            <ScrollViewer x:Name="TabScrollViewer"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel"
+                          ScrollChanged="TabScrollViewer_ScrollChanged">
+                <StackPanel Orientation="Horizontal">
+                    <ItemsControl x:Name="TabList"
+                                  ItemsSource="{Binding Sessions}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="TabBorder"
+                                    Padding="10,8" Margin="2,4" Cursor="Hand"
+                                    CornerRadius="4"
+                                    MouseLeftButtonUp="Tab_Click">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                <Setter Property="Background" Value="#FF2A2A2A"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Rename" Click="RenameTab_Click"/>
+                                        <MenuItem Header="Close" Click="CloseTab_Click"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- Status icon per tab -->
+                                    <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                                        <!-- Default dot: idle/working/interrupted -->
+                                        <!-- Idle/Interrupted: colored dot -->
+                                        <Ellipse Width="6" Height="6">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="#FF4CAF50"/>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Working">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Interrupted">
+                                                            <Setter Property="Fill" Value="#FFEF5350"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <!-- Working: spinning orange arc -->
+                                        <Canvas Width="10" Height="10" RenderTransformOrigin="0.5,0.5">
+                                            <Canvas.Style>
+                                                <Style TargetType="Canvas">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Working">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Canvas.Style>
+                                            <Canvas.RenderTransform>
+                                                <RotateTransform Angle="0"/>
+                                            </Canvas.RenderTransform>
+                                            <Canvas.Triggers>
+                                                <EventTrigger RoutedEvent="Loaded">
+                                                    <BeginStoryboard>
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <DoubleAnimation Storyboard.TargetProperty="(Canvas.RenderTransform).(RotateTransform.Angle)"
+                                                                             From="0" To="360" Duration="0:0:0.8"/>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </EventTrigger>
+                                            </Canvas.Triggers>
+                                            <Path Data="M5,0 A5,5 0 1 1 0,5" Stroke="#FFFFA726"
+                                                  StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                        </Canvas>
+                                        <!-- WaitingForInput: warning triangle -->
+                                        <Path Data="M5,1 L9,9 L1,9 Z" Stroke="#FFFFA726" StrokeThickness="1.5"
+                                              StrokeLineJoin="Round" Fill="Transparent">
+                                            <Path.Style>
+                                                <Style TargetType="Path">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="WaitingForInput">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Path.Style>
+                                        </Path>
+                                        <!-- TaskCompleted: checkmark -->
+                                        <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
+                                              StrokeThickness="1.5" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                                            <Path.Style>
+                                                <Style TargetType="Path">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="TaskCompleted">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Path.Style>
+                                        </Path>
+                                    </Grid>
+                                    <TextBlock Text="{Binding ProjectName}"
+                                               Foreground="#FFE0E0E0" FontSize="12"
+                                               VerticalAlignment="Center"/>
+                                    <!-- Close button: visible when more than 1 session -->
+                                    <Button Content="&#x2715;" FontSize="9"
+                                            Width="16" Height="16" Margin="5,0,0,0"
+                                            Background="Transparent" BorderThickness="0"
+                                            Foreground="#FF666666" Cursor="Hand"
+                                            VerticalAlignment="Center"
+                                            Click="CloseTabInline_Click"
+                                            ToolTip="Close tab">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding DataContext.Sessions.Count, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="1">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- New tab button (right after tabs) -->
+                    <Button Content="+" FontSize="14" FontWeight="Bold"
+                            Style="{StaticResource TabBarIconButton}"
+                            Click="NewTab_Click"
+                            ToolTip="New session"/>
+                </StackPanel>
+            </ScrollViewer>
         </DockPanel>
     </DockPanel>
 </UserControl>

@@ -51,7 +51,7 @@
                     <Canvas.RenderTransform>
                         <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
                     </Canvas.RenderTransform>
-                    <Path Data="M5,0 A5,5 0 1 1 0,5" Stroke="#FFFFA726"
+                    <Path Data="M7,2 A5,5 0 1 1 2,7" Stroke="#FFFFA726"
                           StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                 </Canvas>
 
@@ -62,13 +62,13 @@
                     <Canvas.RenderTransform>
                         <ScaleTransform x:Name="AlertPulse" ScaleX="1" ScaleY="1"/>
                     </Canvas.RenderTransform>
-                    <Path Data="M5,1 L9.5,9 L0.5,9 Z" Fill="#FFFFA726"/>
+                    <Path Data="M7,3 L11.5,11 L2.5,11 Z" Fill="#FFFFA726"/>
                 </Canvas>
 
                 <!-- Checkmark (task completed) -->
                 <Canvas x:Name="CollapsedCheckmark" Width="14" Height="14"
                         Visibility="Collapsed">
-                    <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
+                    <Path Data="M3,7 L6,10 L11,4" Stroke="#FF4CAF50"
                           StrokeThickness="2" StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                 </Canvas>
@@ -115,7 +115,7 @@
                 <Border Grid.Row="2" Background="#FF333333"/>
 
                 <!-- Terminal area -->
-                <Border Grid.Row="3" Background="#FF1A1A1A">
+                <Border Grid.Row="3" Background="#FF1A1A1A" CornerRadius="0,0,7,7">
                     <views:TerminalHostControl x:Name="TerminalHost"/>
                 </Border>
             </Grid>
