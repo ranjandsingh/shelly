@@ -28,6 +28,8 @@ public partial class SessionTabBar : UserControl
     private int _hintIndex;
     private System.Windows.Threading.DispatcherTimer? _hintTimer;
 
+    private const double ScrollStep = 120;
+
     public SessionTabBar()
     {
         InitializeComponent();
@@ -54,6 +56,8 @@ public partial class SessionTabBar : UserControl
         };
         if (AppSettings.LoadShowHints())
             _hintTimer.Start();
+
+        SizeChanged += (_, _) => UpdateScrollButtons();
     }
 
     private void UpdateHintVisibility()
@@ -86,6 +90,9 @@ public partial class SessionTabBar : UserControl
     {
         var session = SessionStore.Instance.AddSession();
         SessionStore.Instance.SelectSession(session.Id);
+        // Scroll to the end so the new tab is visible
+        Dispatcher.BeginInvoke(() => TabScrollViewer.ScrollToRightEnd(),
+            System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
@@ -225,6 +232,14 @@ public partial class SessionTabBar : UserControl
         };
         settingsMenu.Items.Add(showHintsItem);
 
+        var soundItem = new MenuItem
+        {
+            Header = "Sound",
+            IsChecked = AppSettings.LoadSoundEnabled()
+        };
+        soundItem.Click += (_, _) => AppSettings.SaveSoundEnabled(!AppSettings.LoadSoundEnabled());
+        settingsMenu.Items.Add(soundItem);
+
         var autoStartItem = new MenuItem
         {
             Header = "Start with Windows",
@@ -307,6 +322,38 @@ public partial class SessionTabBar : UserControl
             if (SessionStore.Instance.Sessions.Count > 1)
                 SessionStore.Instance.RemoveSession(session.Id);
         }
+    }
+
+    private void ScrollLeft_Click(object sender, RoutedEventArgs e)
+    {
+        TabScrollViewer.ScrollToHorizontalOffset(TabScrollViewer.HorizontalOffset - ScrollStep);
+    }
+
+    private void ScrollRight_Click(object sender, RoutedEventArgs e)
+    {
+        TabScrollViewer.ScrollToHorizontalOffset(TabScrollViewer.HorizontalOffset + ScrollStep);
+    }
+
+    private void TabScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        TabScrollViewer.ScrollToHorizontalOffset(TabScrollViewer.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
+    private void TabScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        UpdateScrollButtons();
+    }
+
+    private void UpdateScrollButtons()
+    {
+        if (TabScrollViewer == null) return;
+
+        var canScroll = TabScrollViewer.ScrollableWidth > 0;
+        ScrollLeftBtn.Visibility = canScroll && TabScrollViewer.HorizontalOffset > 0
+            ? Visibility.Visible : Visibility.Collapsed;
+        ScrollRightBtn.Visibility = canScroll && TabScrollViewer.HorizontalOffset < TabScrollViewer.ScrollableWidth
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ShowKeybindingDialog()

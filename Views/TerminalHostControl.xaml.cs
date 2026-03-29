@@ -13,6 +13,7 @@ public partial class TerminalHostControl : UserControl
     private Guid? _pendingSessionId;
     private bool _webViewReady;
     private bool _webViewInitStarted;
+    private bool _isAttaching;
     private System.Windows.Threading.DispatcherTimer? _statusPollTimer;
 
     public TerminalHostControl()
@@ -123,76 +124,44 @@ public partial class TerminalHostControl : UserControl
     {
         Logger.Log($"TerminalHostControl: AttachSession({sessionId}), webViewReady={_webViewReady}");
 
-        // Detach previous output handler
-        if (_activeSessionId.HasValue)
+        _isAttaching = true;
+        try
         {
-            Logger.Log($"TerminalHostControl: detaching previous handler for {_activeSessionId.Value}");
-            TerminalManager.Instance.RemoveOutputHandler(_activeSessionId.Value);
-        }
-
-        _activeSessionId = sessionId;
-
-        // If WebView2 isn't ready yet, queue for later
-        if (!_webViewReady)
-        {
-            Logger.Log($"TerminalHostControl: WebView2 not ready, queuing session {sessionId}");
-            _pendingSessionId = sessionId;
-            return;
-        }
-
-        // Start status polling for this session
-        _statusPollTimer?.Start();
-
-        var manager = TerminalManager.Instance;
-        var store = SessionStore.Instance;
-        var session = store.Sessions.FirstOrDefault(s => s.Id == sessionId);
-        if (session == null)
-        {
-            Logger.Log($"TerminalHostControl: session {sessionId} NOT FOUND in store!");
-            return;
-        }
-
-        bool isNew = !manager.HasTerminal(sessionId);
-
-        if (isNew)
-        {
-            // New terminal: reset, apply font size, query xterm size, then create terminal
-            // at the correct size so no resize is needed (resize during shell startup deadlocks ConPTY).
-            Logger.Log("TerminalHostControl: calling terminalReset()");
-            await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
-
-            var fontSize = AppSettings.LoadFontSize();
-            if (fontSize != 11)
-                await WebView.CoreWebView2.ExecuteScriptAsync($"setFontSize({fontSize})");
-
-            var sizeJson = await WebView.CoreWebView2.ExecuteScriptAsync("JSON.stringify({cols:term.cols,rows:term.rows})");
-            short cols = 120, rows = 30;
-            try
+            // Detach previous output handler
+            if (_activeSessionId.HasValue)
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(sizeJson.Trim('"').Replace("\\\"", "\""));
-                cols = (short)doc.RootElement.GetProperty("cols").GetInt32();
-                rows = (short)doc.RootElement.GetProperty("rows").GetInt32();
+                Logger.Log($"TerminalHostControl: detaching previous handler for {_activeSessionId.Value}");
+                TerminalManager.Instance.RemoveOutputHandler(_activeSessionId.Value);
             }
-            catch (Exception ex)
+
+            _activeSessionId = sessionId;
+
+            // If WebView2 isn't ready yet, queue for later
+            if (!_webViewReady)
             {
-                Logger.Log($"TerminalHostControl: size query parse error: {ex.Message}");
+                Logger.Log($"TerminalHostControl: WebView2 not ready, queuing session {sessionId}");
+                _pendingSessionId = sessionId;
+                return;
             }
-            Logger.Log($"TerminalHostControl: xterm size={cols}x{rows}");
 
-            Logger.Log($"TerminalHostControl: setting output handler for session {sessionId}");
-            manager.SetOutputHandler(sessionId, WriteOutput);
+            // Start status polling for this session
+            _statusPollTimer?.Start();
 
-            Logger.Log($"TerminalHostControl: creating terminal, workDir={session.WorkingDirectory}, projectPath={session.ProjectPath}");
-            manager.CreateTerminal(sessionId, session.WorkingDirectory, session.ProjectPath, cols, rows);
-            session.HasStarted = true;
-        }
-        else
-        {
-            // Existing terminal (tab switch): suppress live output, replay buffer, then resume.
-            Logger.Log($"TerminalHostControl: terminal already exists for session {sessionId}");
-            manager.BeginSuppressLiveOutput(sessionId);
-            try
+            var manager = TerminalManager.Instance;
+            var store = SessionStore.Instance;
+            var session = store.Sessions.FirstOrDefault(s => s.Id == sessionId);
+            if (session == null)
             {
+                Logger.Log($"TerminalHostControl: session {sessionId} NOT FOUND in store!");
+                return;
+            }
+
+            bool isNew = !manager.HasTerminal(sessionId);
+
+            if (isNew)
+            {
+                // New terminal: reset, apply font size, query xterm size, then create terminal
+                // at the correct size so no resize is needed (resize during shell startup deadlocks ConPTY).
                 Logger.Log("TerminalHostControl: calling terminalReset()");
                 await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
 
@@ -200,25 +169,65 @@ public partial class TerminalHostControl : UserControl
                 if (fontSize != 11)
                     await WebView.CoreWebView2.ExecuteScriptAsync($"setFontSize({fontSize})");
 
-                var buffered = manager.GetBufferedOutput(sessionId);
-                Logger.Log($"TerminalHostControl: buffered output size={buffered.Length}");
-                if (buffered.Length > 0)
+                var sizeJson = await WebView.CoreWebView2.ExecuteScriptAsync("JSON.stringify({cols:term.cols,rows:term.rows})");
+                short cols = 120, rows = 30;
+                try
                 {
-                    var escaped = Convert.ToBase64String(buffered);
-                    Logger.Log($"TerminalHostControl: writing {escaped.Length} chars of base64 buffered data");
-                    await WebView.CoreWebView2.ExecuteScriptAsync($"terminalWriteBase64('{escaped}')");
+                    using var doc = System.Text.Json.JsonDocument.Parse(sizeJson.Trim('"').Replace("\\\"", "\""));
+                    cols = (short)doc.RootElement.GetProperty("cols").GetInt32();
+                    rows = (short)doc.RootElement.GetProperty("rows").GetInt32();
                 }
+                catch (Exception ex)
+                {
+                    Logger.Log($"TerminalHostControl: size query parse error: {ex.Message}");
+                }
+                Logger.Log($"TerminalHostControl: xterm size={cols}x{rows}");
 
                 Logger.Log($"TerminalHostControl: setting output handler for session {sessionId}");
                 manager.SetOutputHandler(sessionId, WriteOutput);
-            }
-            finally
-            {
-                manager.EndSuppressLiveOutput(sessionId);
-            }
-        }
 
-        FocusTerminal();
+                Logger.Log($"TerminalHostControl: creating terminal, workDir={session.WorkingDirectory}, projectPath={session.ProjectPath}");
+                manager.CreateTerminal(sessionId, session.WorkingDirectory, session.ProjectPath, cols, rows);
+                session.HasStarted = true;
+            }
+            else
+            {
+                // Existing terminal (tab switch): suppress live output, replay buffer, then resume.
+                Logger.Log($"TerminalHostControl: terminal already exists for session {sessionId}");
+                manager.BeginSuppressLiveOutput(sessionId);
+                try
+                {
+                    Logger.Log("TerminalHostControl: calling terminalReset()");
+                    await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
+
+                    var fontSize = AppSettings.LoadFontSize();
+                    if (fontSize != 11)
+                        await WebView.CoreWebView2.ExecuteScriptAsync($"setFontSize({fontSize})");
+
+                    var buffered = manager.GetBufferedOutput(sessionId);
+                    Logger.Log($"TerminalHostControl: buffered output size={buffered.Length}");
+                    if (buffered.Length > 0)
+                    {
+                        var escaped = Convert.ToBase64String(buffered);
+                        Logger.Log($"TerminalHostControl: writing {escaped.Length} chars of base64 buffered data");
+                        await WebView.CoreWebView2.ExecuteScriptAsync($"terminalWriteBase64('{escaped}')");
+                    }
+
+                    Logger.Log($"TerminalHostControl: setting output handler for session {sessionId}");
+                    manager.SetOutputHandler(sessionId, WriteOutput);
+                }
+                finally
+                {
+                    manager.EndSuppressLiveOutput(sessionId);
+                }
+            }
+
+            FocusTerminal();
+        }
+        finally
+        {
+            _isAttaching = false;
+        }
     }
 
     public async void ApplyFontSize(int size)
@@ -281,7 +290,7 @@ public partial class TerminalHostControl : UserControl
 
     private async Task PollTerminalStatus()
     {
-        if (!_webViewReady || !_activeSessionId.HasValue) return;
+        if (!_webViewReady || !_activeSessionId.HasValue || _isAttaching) return;
 
         try
         {

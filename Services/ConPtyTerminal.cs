@@ -33,19 +33,25 @@ public class ConPtyTerminal : IDisposable
         if (!NativeMethods.CreatePipe(out var outputReadSide, out var outputWriteSide, IntPtr.Zero, 0))
         {
             Logger.Log($"ConPtyTerminal: CreatePipe(output) FAILED, error={Marshal.GetLastWin32Error()}");
+            NativeMethods.CloseHandle(inputReadSide);
+            NativeMethods.CloseHandle(inputWriteSide);
             return false;
         }
 
         var size = new NativeMethods.COORD { X = cols, Y = rows };
         int hr = NativeMethods.CreatePseudoConsole(size, inputReadSide, outputWriteSide, 0, out _ptyHandle);
+
+        // ConPTY duplicates these internally — close our copies regardless of success
+        NativeMethods.CloseHandle(inputReadSide);
+        NativeMethods.CloseHandle(outputWriteSide);
+
         if (hr != 0)
         {
             Logger.Log($"ConPtyTerminal: CreatePseudoConsole FAILED, hr=0x{hr:X8}");
+            NativeMethods.CloseHandle(outputReadSide);
+            NativeMethods.CloseHandle(inputWriteSide);
             return false;
         }
-
-        NativeMethods.CloseHandle(inputReadSide);
-        NativeMethods.CloseHandle(outputWriteSide);
 
         _pipeReadHandle = outputReadSide;
         _pipeWriteHandle = inputWriteSide;
@@ -57,6 +63,7 @@ public class ConPtyTerminal : IDisposable
         {
             Logger.Log($"ConPtyTerminal: InitializeProcThreadAttributeList FAILED, error={Marshal.GetLastWin32Error()}");
             Marshal.FreeHGlobal(attrList);
+            Dispose();
             return false;
         }
 
@@ -72,6 +79,7 @@ public class ConPtyTerminal : IDisposable
                     IntPtr.Zero, IntPtr.Zero))
             {
                 Logger.Log($"ConPtyTerminal: UpdateProcThreadAttribute FAILED, error={Marshal.GetLastWin32Error()}");
+                Dispose();
                 return false;
             }
 
@@ -96,6 +104,7 @@ public class ConPtyTerminal : IDisposable
             if (!result)
             {
                 Logger.Log($"ConPtyTerminal: CreateProcessW FAILED, error={Marshal.GetLastWin32Error()}");
+                Dispose();
                 return false;
             }
 

@@ -17,6 +17,7 @@ public static class AppSettings
         public bool AutoCheckUpdates { get; set; } = true;
         public bool AutoLaunchClaude { get; set; } = true;
         public bool ShowHints { get; set; } = true;
+        public bool SoundEnabled { get; set; } = true;
         public int FontSize { get; set; } = 11;
         public string? DefaultShell { get; set; }
         public string? LastUpdateCheck { get; set; }
@@ -89,6 +90,15 @@ public static class AppSettings
     {
         var data = LoadData();
         data.ShowHints = value;
+        SaveData(data);
+    }
+
+    public static bool LoadSoundEnabled() => LoadData().SoundEnabled;
+
+    public static void SaveSoundEnabled(bool value)
+    {
+        var data = LoadData();
+        data.SoundEnabled = value;
         SaveData(data);
     }
 

@@ -19,6 +19,8 @@ public static class SoundPlayer
 
     private static void PlayThrottled(SystemSound sound)
     {
+        if (!AppSettings.LoadSoundEnabled()) return;
+
         var now = DateTime.UtcNow;
         if (now - _lastSoundTime < ThrottleInterval) return;
         _lastSoundTime = now;
