@@ -21,7 +21,6 @@ public partial class FloatingPanel : Window
     private DateTime? _outsideSince; // tracks when cursor first left the window
     private bool _iconVisible; // tracks whether the mascot icon is currently shown
     private bool _greetingActive; // prevents UpdateCollapsedBar from hiding during greeting
-
     private const double CollapsedWidth = 48;
     private const double CollapsedWidthWithIcon = 80;
     private const double CollapsedWidthGreeting = 116;
@@ -289,6 +288,11 @@ public partial class FloatingPanel : Window
         // IDE detection disabled — title-based detection doesn't reliably resolve full paths
         // IdeDetector.Instance.StartPolling();
 
+        // Clear TaskCompleted when the user opens the panel to see the session
+        var activeId = SessionStore.Instance.ActiveSessionId;
+        if (activeId.HasValue)
+            Services.StatusParser.AcknowledgeCompletion(activeId.Value);
+
         // Focus terminal
         Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
 
@@ -390,7 +394,7 @@ public partial class FloatingPanel : Window
             !_isExpanded)
         {
             _lastAutoExpandStatus = session.Status;
-            Dispatcher.InvokeAsync(() => ExpandPanel());
+            Dispatcher.InvokeAsync(() => ExpandPanel(pinOpen: true));
         }
         else if (sender is Models.TerminalSession s2)
         {
@@ -568,7 +572,7 @@ public partial class FloatingPanel : Window
         {
             switch (e.Key)
             {
-                case Key.S: _ = CreateCheckpointAsync(); e.Handled = true; break;
+                // Ctrl+S checkpoint disabled — Claude Code has built-in checkpoints
                 case Key.T: SessionStore.Instance.AddSession(); e.Handled = true; break;
                 case Key.W:
                     var activeId = SessionStore.Instance.ActiveSessionId;
@@ -580,18 +584,7 @@ public partial class FloatingPanel : Window
         }
     }
 
-    private async Task CreateCheckpointAsync()
-    {
-        var session = SessionStore.Instance.ActiveSession;
-        if (session?.ProjectPath == null) return;
-        var success = await CheckpointManager.CreateCheckpoint(session.ProjectPath, session.ProjectName);
-        if (success)
-        {
-            Title = "Shelly — Checkpoint Saved";
-            await Task.Delay(2000);
-            Title = "Shelly";
-        }
-    }
+
 
     protected override void OnDrop(DragEventArgs e)
     {

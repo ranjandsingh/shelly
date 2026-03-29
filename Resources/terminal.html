@@ -127,8 +127,11 @@
 
         function terminalGetVisibleText() {
             const buffer = term.buffer.active;
+            const rows = term.rows;
+            const baseY = buffer.baseY;
             let lines = [];
-            for (let i = 0; i < buffer.length; i++) {
+            // Only read the bottom viewport (most recent output), not entire scrollback
+            for (let i = baseY; i < baseY + rows; i++) {
                 const line = buffer.getLine(i);
                 if (line) lines.push(line.translateToString(true));
             }

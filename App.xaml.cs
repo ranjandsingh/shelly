@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -51,6 +52,19 @@ public partial class App : Application
         };
 
         _trayIcon.TrayLeftMouseUp += (_, _) => TogglePanel();
+        _trayIcon.TrayBalloonTipClicked += async (_, _) =>
+        {
+            try
+            {
+                var info = UpdateChecker.LatestUpdate;
+                if (info != null)
+                    await UpdateChecker.ApplyUpdateAsync(info);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Balloon click update failed: {ex.Message}");
+            }
+        };
 
         BuildTrayContextMenu();
 
@@ -60,6 +74,21 @@ public partial class App : Application
         _hotkeyManager = new Interop.HotkeyManager();
         _hotkeyManager.HotkeyPressed += () => TogglePanel();
         _hotkeyManager.Register();
+
+        UpdateChecker.UpdateAvailable += () =>
+            Dispatcher.Invoke(() =>
+            {
+                var info = UpdateChecker.LatestUpdate;
+                if (info == null || _trayIcon == null) return;
+                _trayIcon.ShowBalloonTip(
+                    "Update Available",
+                    $"Shelly {info.TagName} is available. Click to update.",
+                    BalloonIcon.Info);
+                BuildTrayContextMenu();
+            });
+
+        if (AppSettings.LoadAutoCheckUpdates())
+            _ = Task.Run(() => UpdateChecker.CheckForUpdateAsync());
     }
 
     private void BuildTrayContextMenu()
@@ -121,6 +150,47 @@ public partial class App : Application
                 SessionPersistence.Delete();
         };
         contextMenu.Items.Add(rememberItem);
+
+        contextMenu.Items.Add(new Separator());
+
+        var latestUpdate = UpdateChecker.LatestUpdate;
+        if (latestUpdate != null)
+        {
+            var updateItem = new MenuItem { Header = $"Update to {latestUpdate.TagName}" };
+            updateItem.Click += async (_, _) =>
+            {
+                try { await UpdateChecker.ApplyUpdateAsync(latestUpdate); }
+                catch (Exception ex) { Logger.Log($"Menu update failed: {ex.Message}"); }
+            };
+            contextMenu.Items.Add(updateItem);
+        }
+
+        var checkUpdateItem = new MenuItem { Header = "Check for Updates" };
+        checkUpdateItem.Click += async (_, _) =>
+        {
+            try
+            {
+                var info = await Task.Run(() => UpdateChecker.CheckForUpdateAsync(force: true));
+                if (info == null)
+                    _trayIcon?.ShowBalloonTip("Up to Date", "You're running the latest version.", BalloonIcon.Info);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Manual update check failed: {ex.Message}");
+            }
+        };
+        contextMenu.Items.Add(checkUpdateItem);
+
+        var autoCheckItem = new MenuItem
+        {
+            Header = "Auto-check for Updates",
+            IsCheckable = true,
+            IsChecked = AppSettings.LoadAutoCheckUpdates()
+        };
+        autoCheckItem.Click += (_, _) => AppSettings.SaveAutoCheckUpdates(autoCheckItem.IsChecked);
+        contextMenu.Items.Add(autoCheckItem);
+
+        contextMenu.Items.Add(new Separator());
 
         var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) =>

@@ -65,8 +65,9 @@
                 Click="OpenFolder_Click"
                 ToolTip="Open folder in new session"/>
 
-        <!-- Tab list + new tab button -->
-        <StackPanel Orientation="Horizontal">
+        <!-- Tab list + new tab button + hint -->
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
             <ItemsControl x:Name="TabList"
                           ItemsSource="{Binding Sessions}">
                 <ItemsControl.ItemsPanel>
@@ -215,5 +216,15 @@
                     Click="NewTab_Click"
                     ToolTip="New session"/>
         </StackPanel>
+
+            <!-- Hint text — fills remaining space, right-aligned, hides if no room -->
+            <TextBlock x:Name="HintText"
+                       Foreground="#50FFFFFF" FontSize="10"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="8,0,6,0"
+                       SizeChanged="HintText_SizeChanged"/>
+        </DockPanel>
     </DockPanel>
 </UserControl>

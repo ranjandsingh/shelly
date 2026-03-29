@@ -77,7 +77,7 @@ public class TerminalManager
                 session!.SkipAutoLaunch = false; // one-time flag
 
             var claudeMdPath = Path.Combine(projectPath, "CLAUDE.md");
-            var hasClaude = !skipClaude && File.Exists(claudeMdPath);
+            var hasClaude = !skipClaude && AppSettings.LoadAutoLaunchClaude() && File.Exists(claudeMdPath);
             Logger.Log($"TerminalManager: projectPath={projectPath}, hasClaude={hasClaude}, skipClaude={skipClaude}");
 
             var shellName = Path.GetFileNameWithoutExtension(ConPtyTerminal.DefaultShell).ToLower();
