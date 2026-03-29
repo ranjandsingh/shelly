@@ -286,7 +286,8 @@ public partial class FloatingPanel : Window
         PositionCenter();
         Show();
         Activate();
-        IdeDetector.Instance.StartPolling();
+        // IDE detection disabled — title-based detection doesn't reliably resolve full paths
+        // IdeDetector.Instance.StartPolling();
 
         // Focus terminal
         Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);

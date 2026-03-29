@@ -33,6 +33,9 @@ public partial class App : Application
         if (AppSettings.LoadRememberSessions())
             SessionPersistence.Load();
 
+        // IDE detection disabled — title-based detection doesn't reliably resolve full paths
+        // IdeDetector.Instance.Detect();
+
         // Ensure there's at least one session (e.g., first launch or remember disabled)
         SessionStore.Instance.EnsureDefaultSession();
 
@@ -72,22 +75,18 @@ public partial class App : Application
             item.Click += (_, _) =>
             {
                 SessionStore.Instance.SelectSession(s.Id);
-                _panel?.ExpandPanel();
+                _panel?.ExpandPanel(pinOpen: true);
             };
             contextMenu.Items.Add(item);
         }
-
-        contextMenu.Items.Add(new Separator());
 
         var newSessionItem = new MenuItem { Header = "New Session" };
         newSessionItem.Click += (_, _) =>
         {
             SessionStore.Instance.AddSession();
-            _panel?.ExpandPanel();
+            _panel?.ExpandPanel(pinOpen: true);
         };
         contextMenu.Items.Add(newSessionItem);
-
-        contextMenu.Items.Add(new Separator());
 
         // Default shell submenu
         var shellMenu = new MenuItem { Header = "Default Shell" };
@@ -122,8 +121,6 @@ public partial class App : Application
                 SessionPersistence.Delete();
         };
         contextMenu.Items.Add(rememberItem);
-
-        contextMenu.Items.Add(new Separator());
 
         var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) =>

@@ -3,8 +3,7 @@
 </p>
 
 <p align="center">
-  A floating terminal for Windows that launches Claude Code, tracks its status, and auto-detects your IDE projects.
-  <br><br>
+  A floating terminal for Windows that launches Claude Code and tracks its status.<br>
   Inspired by <a href="https://github.com/adamlyttleapps/notchy">Notchy</a> for macOS.
 </p>
 
@@ -13,7 +12,6 @@
 ## Features
 
 - **Floating panel** — a minimal, always-on-top terminal that launches Claude Code, toggled with <kbd>Ctrl+`</kbd>
-- **IDE project detection** — automatically discovers open VS Code and JetBrains IDE projects and `cd`s into them
 - **Multi-session tabs** — run multiple terminal sessions side by side, each in its own directory
 - **Claude Code status tracking** — detects Claude Code's state (working, waiting for input, task completed) and shows it as animated indicators in the collapsed bar
 - **Git checkpoints** — `Ctrl+S` to snapshot your project before making changes, stored as lightweight git refs

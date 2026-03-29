@@ -20,7 +20,14 @@ public class IdeDetector
         _pollTimer.Elapsed += (_, _) => Detect();
     }
 
-    public void StartPolling() => _pollTimer.Start();
+    public void StartPolling()
+    {
+        if (!_pollTimer.Enabled)
+        {
+            Detect(); // run immediately on first start
+            _pollTimer.Start();
+        }
+    }
     public void StopPolling() => _pollTimer.Stop();
 
     public void Detect()
@@ -125,7 +132,7 @@ public class IdeDetector
         ProjectsDetected?.Invoke(projects);
     }
 
-    private static readonly (string suffix, string label)[] VsCodeFamilyIdes =
+    private static readonly (string marker, string label)[] VsCodeFamilyIdes =
     {
         (" - Visual Studio Code", "VS Code"),
         (" - Cursor", "Cursor"),
@@ -134,10 +141,12 @@ public class IdeDetector
 
     private static DetectedProject? MatchVsCodeFamily(string title)
     {
-        foreach (var (suffix, label) in VsCodeFamilyIdes)
+        foreach (var (marker, label) in VsCodeFamilyIdes)
         {
-            if (!title.EndsWith(suffix)) continue;
-            var content = title[..^suffix.Length];
+            // IDE name may not be at the end — e.g. "file - folder - Cursor - Untracked"
+            var idx = title.IndexOf(marker, StringComparison.Ordinal);
+            if (idx < 0) continue;
+            var content = title[..idx];
             // Pattern: "<file> - <folder>" or just "<folder>"
             var dashIdx = content.LastIndexOf(" - ");
             var folder = dashIdx >= 0 ? content[(dashIdx + 3)..].Trim() : content.Trim();
