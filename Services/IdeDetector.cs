@@ -20,7 +20,14 @@ public class IdeDetector
         _pollTimer.Elapsed += (_, _) => Detect();
     }
 
-    public void StartPolling() => _pollTimer.Start();
+    public void StartPolling()
+    {
+        if (!_pollTimer.Enabled)
+        {
+            Detect(); // run immediately on first start
+            _pollTimer.Start();
+        }
+    }
     public void StopPolling() => _pollTimer.Stop();
 
     public void Detect()
@@ -38,20 +45,12 @@ public class IdeDetector
             NativeMethods.GetWindowText(hWnd, sb, sb.Capacity);
             var title = sb.ToString();
 
-            // VS Code: "<file> - <folder> - Visual Studio Code"
-            if (title.Contains(" - Visual Studio Code"))
+            // VS Code-family: "<file> - <folder> - <IDE name>"
+            // Covers VS Code, Cursor, Windsurf
+            var vscodeFamily = MatchVsCodeFamily(title);
+            if (vscodeFamily != null)
             {
-                var match = Regex.Match(title, @"(.+) - (.+) - Visual Studio Code");
-                if (match.Success)
-                {
-                    var folder = match.Groups[2].Value.Trim();
-                    projects.Add(new DetectedProject
-                    {
-                        Name = Path.GetFileName(folder),
-                        Path = folder,
-                        Ide = "VS Code"
-                    });
-                }
+                projects.Add(vscodeFamily);
             }
             // JetBrains: "<project> – <IDE name>"
             else if (title.Contains(" \u2013 ") && IsJetBrainsIde(title))
@@ -67,11 +66,99 @@ public class IdeDetector
                     });
                 }
             }
+            // Zed: "<file> - <folder> - Zed" or "<folder> - Zed"
+            else if (title.EndsWith(" - Zed"))
+            {
+                var match = Regex.Match(title, @"(.+) - (.+) - Zed$");
+                if (match.Success)
+                {
+                    var folder = match.Groups[2].Value.Trim();
+                    projects.Add(new DetectedProject
+                    {
+                        Name = Path.GetFileName(folder),
+                        Path = folder,
+                        Ide = "Zed"
+                    });
+                }
+                else
+                {
+                    var folder = title[..^" - Zed".Length].Trim();
+                    if (folder.Length > 0)
+                    {
+                        projects.Add(new DetectedProject
+                        {
+                            Name = Path.GetFileName(folder),
+                            Path = folder,
+                            Ide = "Zed"
+                        });
+                    }
+                }
+            }
+            // Visual Studio: "<solution/project> - Microsoft Visual Studio"
+            else if (title.EndsWith(" - Microsoft Visual Studio"))
+            {
+                var name = title[..^" - Microsoft Visual Studio".Length].Trim();
+                if (name.Length > 0)
+                {
+                    projects.Add(new DetectedProject
+                    {
+                        Name = name,
+                        Path = null, // VS doesn't expose full path in title
+                        Ide = "Visual Studio"
+                    });
+                }
+            }
+            // Sublime Text: "<file> — <folder> - Sublime Text" or "<folder> - Sublime Text"
+            else if (title.EndsWith(" - Sublime Text"))
+            {
+                var content = title[..^" - Sublime Text".Length].Trim();
+                // Try to extract folder from "file — folder" pattern (em dash)
+                var dashIdx = content.LastIndexOf(" \u2014 ");
+                var folder = dashIdx >= 0 ? content[(dashIdx + 3)..].Trim() : content;
+                if (folder.Length > 0)
+                {
+                    projects.Add(new DetectedProject
+                    {
+                        Name = Path.GetFileName(folder),
+                        Path = folder,
+                        Ide = "Sublime Text"
+                    });
+                }
+            }
 
             return true;
         }, IntPtr.Zero);
 
         ProjectsDetected?.Invoke(projects);
+    }
+
+    private static readonly (string marker, string label)[] VsCodeFamilyIdes =
+    {
+        (" - Visual Studio Code", "VS Code"),
+        (" - Cursor", "Cursor"),
+        (" - Windsurf", "Windsurf"),
+    };
+
+    private static DetectedProject? MatchVsCodeFamily(string title)
+    {
+        foreach (var (marker, label) in VsCodeFamilyIdes)
+        {
+            // IDE name may not be at the end — e.g. "file - folder - Cursor - Untracked"
+            var idx = title.IndexOf(marker, StringComparison.Ordinal);
+            if (idx < 0) continue;
+            var content = title[..idx];
+            // Pattern: "<file> - <folder>" or just "<folder>"
+            var dashIdx = content.LastIndexOf(" - ");
+            var folder = dashIdx >= 0 ? content[(dashIdx + 3)..].Trim() : content.Trim();
+            if (folder.Length == 0) continue;
+            return new DetectedProject
+            {
+                Name = Path.GetFileName(folder),
+                Path = folder,
+                Ide = label
+            };
+        }
+        return null;
     }
 
     private static bool IsJetBrainsIde(string title)

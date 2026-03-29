@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Shelly.Animations;
 using Shelly.Interop;
 using Shelly.Services;
 
@@ -133,11 +134,32 @@ public partial class FloatingPanel : Window
         PlayLaunchGreeting();
     }
 
+    private static readonly string[] Greetings =
+    [
+        "Hello!",
+        "Hey!",
+        "Namaste!",
+        "Hola!",
+        "Bonjour!",
+        "Ciao!",
+        "Hallo!",
+        "Olá!",
+        "Ahoj!",
+        "Salut!",
+        "Hej!",
+        "Aloha!",
+        "Salam!",
+        "Sawubona!",
+        "Merhaba!",
+    ];
+
     private void PlayLaunchGreeting()
     {
         _greetingActive = true;
 
-        // Show mascot icon with "Hello!" text
+        CollapsedGreeting.Text = Greetings[Random.Shared.Next(Greetings.Length)];
+
+        // Show mascot icon with greeting text
         CollapsedIcon.Width = 28;
         CollapsedIcon.Height = 28;
         CollapsedBar.CornerRadius = new CornerRadius(16);
@@ -223,29 +245,49 @@ public partial class FloatingPanel : Window
         if (!pinOpen)
             _hoverCollapseTimer?.Start(); // only auto-collapse on hover-triggered expand
 
+        // Hide collapsed bar and set expanded panel to invisible BEFORE resizing
+        // to prevent a flash frame where the pill is visible at 720x400
+        CollapsedBar.Visibility = Visibility.Collapsed;
+        ExpandedPanel.Opacity = 0;
+        ExpandedPanel.Visibility = Visibility.Visible;
+
         Width = ExpandedWidth;
         Height = ExpandedHeight;
         ResizeMode = ResizeMode.CanResizeWithGrip;
 
-        CollapsedBar.Visibility = Visibility.Collapsed;
-        ExpandedPanel.Visibility = Visibility.Visible;
+        // Fluid expand animation: scale from center + translate + staggered opacity
+        bool bottom = SessionStore.Instance.NotchAtBottom;
+        ExpandedPanel.RenderTransformOrigin = new Point(0.5, 0.5);
+        double translateFrom = bottom ? 20 : -20;
 
-        // Fade in
-        ExpandedPanel.Opacity = 0;
-        ExpandedPanelTranslate.Y = -15;
-        var duration = TimeSpan.FromMilliseconds(220);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var fadeIn = new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        fadeIn.Completed += (_, _) => ExpandedPanel.Opacity = 1;
-        var slideDown = new DoubleAnimation(-15, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        var transformDuration = TimeSpan.FromMilliseconds(350);
+        var opacityDuration = TimeSpan.FromMilliseconds(300);
+        var springEase = new SpringEase { Overshoot = 0.07, EasingMode = EasingMode.EaseOut };
+        var opacityEase = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        ExpandedPanelScale.ScaleX = 0.93;
+        ExpandedPanelScale.ScaleY = 0.93;
+        ExpandedPanelTranslate.Y = translateFrom;
+
+        var scaleY = new DoubleAnimation(0.93, 1.0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
+        scaleY.Completed += (_, _) => ExpandedPanelScale.ScaleY = 1.0;
+        var scaleX = new DoubleAnimation(0.93, 1.0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
+        scaleX.Completed += (_, _) => ExpandedPanelScale.ScaleX = 1.0;
+        var slideDown = new DoubleAnimation(translateFrom, 0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
         slideDown.Completed += (_, _) => ExpandedPanelTranslate.Y = 0;
-        ExpandedPanel.BeginAnimation(OpacityProperty, fadeIn);
+        var fadeIn = new DoubleAnimation(0, 1, opacityDuration) { EasingFunction = opacityEase, BeginTime = TimeSpan.FromMilliseconds(30), FillBehavior = FillBehavior.Stop };
+        fadeIn.Completed += (_, _) => ExpandedPanel.Opacity = 1;
+
+        ExpandedPanelScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+        ExpandedPanelScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
         ExpandedPanelTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
+        ExpandedPanel.BeginAnimation(OpacityProperty, fadeIn);
 
         PositionCenter();
         Show();
         Activate();
-        IdeDetector.Instance.StartPolling();
+        // IDE detection disabled — title-based detection doesn't reliably resolve full paths
+        // IdeDetector.Instance.StartPolling();
 
         // Focus terminal
         Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
@@ -261,8 +303,8 @@ public partial class FloatingPanel : Window
             }));
         }));
 
-        // Brief guard so OnDeactivated doesn't fire immediately (original pattern)
-        Task.Delay(300).ContinueWith(_ =>
+        // Brief guard so OnDeactivated doesn't fire immediately (covers 350ms expand animation)
+        Task.Delay(400).ContinueWith(_ =>
             Dispatcher.InvokeAsync(() => _isShowing = false));
     }
 
@@ -272,26 +314,48 @@ public partial class FloatingPanel : Window
         if (!_isExpanded) return;
         _isExpanded = false;
 
-        var duration = TimeSpan.FromMilliseconds(150);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
-        var fadeOut = new DoubleAnimation(1, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        var slideUp = new DoubleAnimation(0, -10, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        // Hide resize grip and WebView2 HWND immediately so the entire panel
+        // animates as one clean unit (no flashing grip icon or split layers)
+        ResizeMode = ResizeMode.NoResize;
+        TerminalHost.Visibility = Visibility.Hidden;
+
+        // Fluid collapse animation: scale + translate + opacity
+        bool bottom = SessionStore.Instance.NotchAtBottom;
+        ExpandedPanel.RenderTransformOrigin = new Point(0.5, 0.5);
+        double translateTo = bottom ? 15 : -15;
+
+        var transformDuration = TimeSpan.FromMilliseconds(380);
+        var opacityDuration = TimeSpan.FromMilliseconds(320);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+        var scaleY = new DoubleAnimation(1.0, 0.9, transformDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        scaleY.Completed += (_, _) => ExpandedPanelScale.ScaleY = 1.0;
+        var scaleX = new DoubleAnimation(1.0, 0.98, transformDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        scaleX.Completed += (_, _) => ExpandedPanelScale.ScaleX = 1.0;
+        var slideUp = new DoubleAnimation(0, translateTo, transformDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        slideUp.Completed += (_, _) => ExpandedPanelTranslate.Y = 0;
+        var fadeOut = new DoubleAnimation(1, 0, opacityDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         fadeOut.Completed += (_, _) =>
         {
             ExpandedPanel.Opacity = 1;
             ExpandedPanelTranslate.Y = 0;
+            ExpandedPanelScale.ScaleX = 1.0;
+            ExpandedPanelScale.ScaleY = 1.0;
             ExpandedPanel.Visibility = Visibility.Collapsed;
             CollapsedBar.Visibility = Visibility.Visible;
+            TerminalHost.Visibility = Visibility.Visible; // restore for next expand
             Width = _iconVisible ? CollapsedWidthWithIcon : CollapsedWidth;
             Height = _iconVisible ? CollapsedHeightWithIcon : CollapsedHeight;
-            ResizeMode = ResizeMode.NoResize;
             PositionCenter();
 
             if (!SessionStore.Instance.IsPinned)
                 IdeDetector.Instance.StopPolling();
         };
-        ExpandedPanel.BeginAnimation(OpacityProperty, fadeOut);
+
+        ExpandedPanelScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+        ExpandedPanelScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
         ExpandedPanelTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
+        ExpandedPanel.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     public void TogglePanel()

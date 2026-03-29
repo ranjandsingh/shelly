@@ -38,11 +38,15 @@ public class SessionStore : INotifyPropertyChanged
 
     private SessionStore()
     {
-        // Create a default session
-        AddSession();
-
         // Wire IDE detection
         IdeDetector.Instance.ProjectsDetected += OnProjectsDetected;
+    }
+
+    /// <summary>Ensures at least one session exists. Call after loading saved sessions.</summary>
+    public void EnsureDefaultSession()
+    {
+        if (Sessions.Count == 0)
+            AddSession();
     }
 
     public TerminalSession AddSession(string? projectName = null, string? projectPath = null, string? workingDirectory = null)

@@ -29,8 +29,15 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        // Restore saved sessions
-        SessionPersistence.Load();
+        // Restore saved sessions if the user opted in
+        if (AppSettings.LoadRememberSessions())
+            SessionPersistence.Load();
+
+        // IDE detection disabled — title-based detection doesn't reliably resolve full paths
+        // IdeDetector.Instance.Detect();
+
+        // Ensure there's at least one session (e.g., first launch or remember disabled)
+        SessionStore.Instance.EnsureDefaultSession();
 
         _panel = new FloatingPanel();
         // Show immediately in collapsed state (small indicator bar)
@@ -68,22 +75,18 @@ public partial class App : Application
             item.Click += (_, _) =>
             {
                 SessionStore.Instance.SelectSession(s.Id);
-                _panel?.ExpandPanel();
+                _panel?.ExpandPanel(pinOpen: true);
             };
             contextMenu.Items.Add(item);
         }
-
-        contextMenu.Items.Add(new Separator());
 
         var newSessionItem = new MenuItem { Header = "New Session" };
         newSessionItem.Click += (_, _) =>
         {
             SessionStore.Instance.AddSession();
-            _panel?.ExpandPanel();
+            _panel?.ExpandPanel(pinOpen: true);
         };
         contextMenu.Items.Add(newSessionItem);
-
-        contextMenu.Items.Add(new Separator());
 
         // Default shell submenu
         var shellMenu = new MenuItem { Header = "Default Shell" };
@@ -104,7 +107,20 @@ public partial class App : Application
         }
         contextMenu.Items.Add(shellMenu);
 
-        contextMenu.Items.Add(new Separator());
+        var rememberItem = new MenuItem
+        {
+            Header = "Remember Sessions",
+            IsCheckable = true,
+            IsChecked = AppSettings.LoadRememberSessions()
+        };
+        rememberItem.Click += (_, _) =>
+        {
+            var enabled = rememberItem.IsChecked;
+            AppSettings.SaveRememberSessions(enabled);
+            if (!enabled)
+                SessionPersistence.Delete();
+        };
+        contextMenu.Items.Add(rememberItem);
 
         var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) =>
@@ -126,7 +142,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        SessionPersistence.Save();
+        if (AppSettings.LoadRememberSessions())
+            SessionPersistence.Save();
+
         SleepPrevention.AllowSleep();
         _trayIcon?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
