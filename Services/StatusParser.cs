@@ -9,6 +9,7 @@ public static class StatusParser
 {
     private static readonly Dictionary<Guid, DateTime> _lastWorkingTime = new();
     private static readonly Dictionary<Guid, System.Timers.Timer> _completionTimers = new();
+    private static readonly Dictionary<Guid, System.Timers.Timer> _soundConfirmTimers = new();
 
     // Completion message: "✻ Cogitated for 4m 2s", "✻ Brewed for 6m 41s", etc.
     private static readonly Regex CompletionPattern = new(@"[✢✳✶✻✽].*\bfor\b.*\d+[ms]", RegexOptions.Compiled);
@@ -160,6 +161,7 @@ public static class StatusParser
         {
             _lastWorkingTime[sessionId] = DateTime.UtcNow;
             CancelCompletionTimer(sessionId);
+            CancelSoundConfirmation(sessionId);
         }
 
         // Working → Idle: delay 3s then trigger TaskCompleted (only if worked >10s)
@@ -183,11 +185,8 @@ public static class StatusParser
         {
             session.Status = newStatus;
 
-            // Sound notification: WaitingForInput disabled (plays on every expand due to status re-fire bug)
-            // if (newStatus == TerminalStatus.WaitingForInput)
-            //     SoundPlayer.PlayWaitingForInput();
             if (newStatus == TerminalStatus.TaskCompleted)
-                SoundPlayer.PlayTaskCompleted();
+                ScheduleSoundConfirmation(sessionId);
         });
     }
 
@@ -202,13 +201,14 @@ public static class StatusParser
         {
             if (session.Status == TerminalStatus.TaskCompleted) return;
             session.Status = TerminalStatus.TaskCompleted;
-            SoundPlayer.PlayTaskCompleted();
+            ScheduleSoundConfirmation(sessionId);
         });
     }
 
     /// <summary>Clear TaskCompleted status when the user views the session.</summary>
     public static void AcknowledgeCompletion(Guid sessionId)
     {
+        CancelSoundConfirmation(sessionId);
         var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session == null) return;
         if (session.Status == TerminalStatus.TaskCompleted)
@@ -232,7 +232,7 @@ public static class StatusParser
                 {
                     if (session.Status == TerminalStatus.TaskCompleted) return;
                     session.Status = TerminalStatus.TaskCompleted;
-                    SoundPlayer.PlayTaskCompleted();
+                    ScheduleSoundConfirmation(sessionId);
                 });
             }
         };
@@ -247,6 +247,56 @@ public static class StatusParser
             existing.Stop();
             existing.Dispose();
             _completionTimers.Remove(sessionId);
+        }
+    }
+
+    /// <summary>
+    /// Schedule a sound to play after a confirmation delay.
+    /// If the session is no longer TaskCompleted when the timer fires, the sound is skipped.
+    /// This prevents false sounds from transient status blips during tab switch, panel expand, or typing.
+    /// </summary>
+    private static void ScheduleSoundConfirmation(Guid sessionId)
+    {
+        CancelSoundConfirmation(sessionId);
+
+        var timer = new System.Timers.Timer(1500) { AutoReset = false };
+        timer.Elapsed += (_, _) =>
+        {
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                _soundConfirmTimers.Remove(sessionId);
+                var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
+                if (session?.Status != TerminalStatus.TaskCompleted)
+                {
+                    Logger.Log("StatusParser: sound cancelled, status changed before confirmation");
+                    return;
+                }
+
+                // Only play sound for background sessions — if the user is actively
+                // viewing this session, the visual indicator is enough and the sound
+                // would be a false positive from typing/interaction disrupting the poll.
+                var isActiveSession = SessionStore.Instance.ActiveSessionId == sessionId;
+                if (isActiveSession)
+                {
+                    Logger.Log("StatusParser: sound skipped, session is active");
+                    return;
+                }
+
+                Logger.Log("StatusParser: sound confirmed, playing TaskCompleted sound");
+                SoundPlayer.PlayTaskCompleted();
+            });
+        };
+        timer.Start();
+        _soundConfirmTimers[sessionId] = timer;
+    }
+
+    private static void CancelSoundConfirmation(Guid sessionId)
+    {
+        if (_soundConfirmTimers.TryGetValue(sessionId, out var existing))
+        {
+            existing.Stop();
+            existing.Dispose();
+            _soundConfirmTimers.Remove(sessionId);
         }
     }
 }
