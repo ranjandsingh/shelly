@@ -8,6 +8,16 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Resources\tray-icon.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Versioning -->
+    <Version>0.1.0</Version>
+
+    <!-- Assembly metadata -->
+    <Product>Notchy Windows</Product>
+    <Company>ranjandsingh</Company>
+    <Authors>ranjandsingh</Authors>
+    <Description>A floating terminal panel for Windows with IDE project detection</Description>
+    <Copyright>Copyright (c) 2025 ranjandsingh</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

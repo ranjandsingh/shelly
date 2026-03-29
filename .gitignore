@@ -27,6 +27,10 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
+## Release artifacts
+artifacts/
+publish/
+
 ## WebView2
 NotchyWindows/Resources/EBWebView/
 sdfasd.claude/settings.local.json
