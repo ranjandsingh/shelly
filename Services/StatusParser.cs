@@ -7,6 +7,7 @@ namespace Shelly.Services;
 
 public static class StatusParser
 {
+    private static readonly object _lock = new();
     private static readonly Dictionary<Guid, DateTime> _lastWorkingTime = new();
     private static readonly Dictionary<Guid, System.Timers.Timer> _completionTimers = new();
     private static readonly Dictionary<Guid, System.Timers.Timer> _soundConfirmTimers = new();
@@ -142,58 +143,65 @@ public static class StatusParser
         var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session == null) return;
 
-        var oldStatus = session.Status;
-        if (newStatus == oldStatus) return;
-
-        // Don't let polling clear TaskCompleted — the 3s clear timer handles that
-        if (oldStatus == TerminalStatus.TaskCompleted && newStatus == TerminalStatus.Idle)
-            return;
-
-        // Sticky: don't drop from Working to Idle too quickly (polling can miss spinner)
-        if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
+        lock (_lock)
         {
-            if (_lastWorkingTime.TryGetValue(sessionId, out var lastWork) &&
-                (DateTime.UtcNow - lastWork).TotalSeconds < 2)
+            var oldStatus = session.Status;
+            if (newStatus == oldStatus) return;
+
+            // Don't let polling clear TaskCompleted — the 3s clear timer handles that
+            if (oldStatus == TerminalStatus.TaskCompleted && newStatus == TerminalStatus.Idle)
                 return;
-        }
 
-        if (newStatus == TerminalStatus.Working)
-        {
-            _lastWorkingTime[sessionId] = DateTime.UtcNow;
-            CancelCompletionTimer(sessionId);
-            CancelSoundConfirmation(sessionId);
-        }
-
-        // Working → Idle: delay 3s then trigger TaskCompleted (only if worked >10s)
-        if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
-        {
-            if (_lastWorkingTime.TryGetValue(sessionId, out var start) &&
-                (DateTime.UtcNow - start).TotalSeconds > 10)
+            // Sticky: don't drop from Working to Idle too quickly (polling can miss spinner)
+            if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
             {
-                if (!_completionTimers.ContainsKey(sessionId))
-                {
-                    Logger.Log($"StatusParser: starting completion timer (worked {(DateTime.UtcNow - start).TotalSeconds:F0}s)");
-                    StartCompletionTimer(sessionId);
-                }
-                return;
+                if (_lastWorkingTime.TryGetValue(sessionId, out var lastWork) &&
+                    (DateTime.UtcNow - lastWork).TotalSeconds < 2)
+                    return;
             }
+
+            if (newStatus == TerminalStatus.Working)
+            {
+                _lastWorkingTime[sessionId] = DateTime.UtcNow;
+                CancelCompletionTimerLocked(sessionId);
+                CancelSoundConfirmationLocked(sessionId);
+            }
+
+            // Working → Idle: delay 3s then trigger TaskCompleted (only if worked >10s)
+            if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
+            {
+                if (_lastWorkingTime.TryGetValue(sessionId, out var start) &&
+                    (DateTime.UtcNow - start).TotalSeconds > 10)
+                {
+                    if (!_completionTimers.ContainsKey(sessionId))
+                    {
+                        Logger.Log($"StatusParser: starting completion timer (worked {(DateTime.UtcNow - start).TotalSeconds:F0}s)");
+                        StartCompletionTimerLocked(sessionId);
+                    }
+                    return;
+                }
+            }
+
+            Logger.Log($"StatusParser: {oldStatus} → {newStatus}");
+
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                session.Status = newStatus;
+
+                if (newStatus == TerminalStatus.TaskCompleted)
+                    ScheduleSoundConfirmation(sessionId);
+            });
         }
-
-        Logger.Log($"StatusParser: {oldStatus} → {newStatus}");
-
-        Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            session.Status = newStatus;
-
-            if (newStatus == TerminalStatus.TaskCompleted)
-                ScheduleSoundConfirmation(sessionId);
-        });
     }
 
     /// <summary>Immediately mark a task as completed (bypasses the 3s delay timer).</summary>
     private static void MarkTaskCompleted(Guid sessionId)
     {
-        CancelCompletionTimer(sessionId);
+        lock (_lock)
+        {
+            CancelCompletionTimerLocked(sessionId);
+        }
+
         var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session == null) return;
 
@@ -208,7 +216,11 @@ public static class StatusParser
     /// <summary>Clear TaskCompleted status when the user views the session.</summary>
     public static void AcknowledgeCompletion(Guid sessionId)
     {
-        CancelSoundConfirmation(sessionId);
+        lock (_lock)
+        {
+            CancelSoundConfirmationLocked(sessionId);
+        }
+
         var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session == null) return;
         if (session.Status == TerminalStatus.TaskCompleted)
@@ -218,9 +230,10 @@ public static class StatusParser
         }
     }
 
-    private static void StartCompletionTimer(Guid sessionId)
+    /// <summary>Must be called under _lock.</summary>
+    private static void StartCompletionTimerLocked(Guid sessionId)
     {
-        CancelCompletionTimer(sessionId);
+        CancelCompletionTimerLocked(sessionId);
 
         var timer = new System.Timers.Timer(3000) { AutoReset = false };
         timer.Elapsed += (_, _) =>
@@ -240,7 +253,8 @@ public static class StatusParser
         _completionTimers[sessionId] = timer;
     }
 
-    private static void CancelCompletionTimer(Guid sessionId)
+    /// <summary>Must be called under _lock.</summary>
+    private static void CancelCompletionTimerLocked(Guid sessionId)
     {
         if (_completionTimers.TryGetValue(sessionId, out var existing))
         {
@@ -257,14 +271,18 @@ public static class StatusParser
     /// </summary>
     private static void ScheduleSoundConfirmation(Guid sessionId)
     {
-        CancelSoundConfirmation(sessionId);
-
-        var timer = new System.Timers.Timer(1500) { AutoReset = false };
-        timer.Elapsed += (_, _) =>
+        lock (_lock)
         {
-            Application.Current.Dispatcher.InvokeAsync(() =>
+            CancelSoundConfirmationLocked(sessionId);
+
+            var timer = new System.Timers.Timer(1500) { AutoReset = false };
+            timer.Elapsed += (_, _) =>
             {
-                _soundConfirmTimers.Remove(sessionId);
+                lock (_lock)
+                {
+                    _soundConfirmTimers.Remove(sessionId);
+                }
+
                 var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
                 if (session?.Status != TerminalStatus.TaskCompleted)
                 {
@@ -284,13 +302,14 @@ public static class StatusParser
 
                 Logger.Log("StatusParser: sound confirmed, playing TaskCompleted sound");
                 SoundPlayer.PlayTaskCompleted();
-            });
-        };
-        timer.Start();
-        _soundConfirmTimers[sessionId] = timer;
+            };
+            timer.Start();
+            _soundConfirmTimers[sessionId] = timer;
+        }
     }
 
-    private static void CancelSoundConfirmation(Guid sessionId)
+    /// <summary>Must be called under _lock.</summary>
+    private static void CancelSoundConfirmationLocked(Guid sessionId)
     {
         if (_soundConfirmTimers.TryGetValue(sessionId, out var existing))
         {

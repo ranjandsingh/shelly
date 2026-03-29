@@ -9,6 +9,8 @@ public class TerminalManager
 {
     public static TerminalManager Instance { get; } = new();
 
+    private const int MaxBufferSize = 2 * 1024 * 1024; // 2 MB cap per session
+
     private readonly ConcurrentDictionary<Guid, ConPtyTerminal> _terminals = new();
     private readonly ConcurrentDictionary<Guid, MemoryStream> _outputBuffers = new();
     private readonly ConcurrentDictionary<Guid, Action<byte[]>> _outputHandlers = new();
@@ -32,11 +34,19 @@ public class TerminalManager
             if (outputCount <= 5 || outputCount % 100 == 0)
                 Logger.Log($"TerminalManager: OutputReceived #{outputCount} for session {sessionId}, bytes={data.Length}, hasHandler={_outputHandlers.ContainsKey(sessionId)}");
 
-            // Buffer the output
+            // Buffer the output (capped at MaxBufferSize — keep the most recent data)
             var buffer = _outputBuffers.GetOrAdd(sessionId, _ => new MemoryStream());
             lock (buffer)
             {
                 buffer.Write(data, 0, data.Length);
+
+                if (buffer.Length > MaxBufferSize)
+                {
+                    var bytes = buffer.ToArray();
+                    var keep = bytes.AsSpan((int)(buffer.Length - MaxBufferSize / 2));
+                    buffer.SetLength(0);
+                    buffer.Write(keep);
+                }
             }
 
             // Forward to any attached handler (the WebView2 terminal), unless replay is in progress
@@ -144,7 +154,10 @@ public class TerminalManager
     {
         if (_terminals.TryRemove(sessionId, out var terminal))
             terminal.Dispose();
-        _outputBuffers.TryRemove(sessionId, out _);
+        if (_outputBuffers.TryRemove(sessionId, out var buffer))
+        {
+            lock (buffer) { buffer.Dispose(); }
+        }
         _outputHandlers.TryRemove(sessionId, out _);
         _suppressLiveOutput.TryRemove(sessionId, out _);
     }
