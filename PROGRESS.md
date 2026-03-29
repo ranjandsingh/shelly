@@ -1,9 +1,9 @@
-# Notchy Windows — Progress
+# Shelly — Progress
 
 ## 2026-03-28: Initial Scaffolding (Phases 1–3)
 
 ### Project Setup
-- Created private GitHub repo: `ranjandsingh/notchy-windows`
+- Created private GitHub repo: `ranjandsingh/shelly`
 - Set up WPF .NET 8 project with solution file
 - Installed .NET 8 SDK on machine
 - Added NuGet packages: Hardcodet.NotifyIcon.Wpf.NetCore, Microsoft.Web.WebView2
@@ -46,7 +46,7 @@
 
 ### Services (Phases 4–8 — code written, not yet wired)
 - `IdeDetector`: EnumWindows + title parsing for VS Code and JetBrains IDEs, 5-second polling
-- `CheckpointManager`: git CLI snapshots using refs/notchy-snapshots/ with temp GIT_INDEX_FILE
+- `CheckpointManager`: git CLI snapshots using refs/shelly-snapshots/ with temp GIT_INDEX_FILE
 - `StatusParser`: classifies terminal output into status states (spinner detection, prompt detection, 3s completion delay)
 - `SleepPrevention`: SetThreadExecutionState wrapper
 - `HotkeyManager`: Ctrl+` global hotkey via RegisterHotKey
@@ -90,7 +90,7 @@
 - Active tab highlighting (`IsActive` property + #2A2A2A background)
 - Keyboard shortcuts: Ctrl+T (new tab), Ctrl+W (close tab), Ctrl+S (checkpoint)
 - Terminal resize: WebView2 JSON resize messages parsed and forwarded to `ConPtyTerminal.Resize()`
-- Session persistence: save/load JSON to `%LOCALAPPDATA%\NotchyWindows\sessions.json`
+- Session persistence: save/load JSON to `%LOCALAPPDATA%\Shelly\sessions.json`
 - Single-instance app check via named Mutex
 - Tray context menu: dynamically lists all sessions, click to switch and show panel
 - Drag & drop folders onto panel to create sessions

@@ -1,13 +1,13 @@
 using System.IO;
 using System.Text.Json;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class AppSettings
 {
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "NotchyWindows", "settings.json");
+        "Shelly", "settings.json");
 
     private class Data
     {

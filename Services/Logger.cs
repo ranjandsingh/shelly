@@ -1,12 +1,12 @@
 using System.IO;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class Logger
 {
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "NotchyWindows", "debug.log");
+        "Shelly", "debug.log");
 
     private static readonly object Lock = new();
 
@@ -15,7 +15,7 @@ public static class Logger
         var dir = Path.GetDirectoryName(LogPath)!;
         Directory.CreateDirectory(dir);
         // Clear log on startup
-        File.WriteAllText(LogPath, $"=== Notchy Windows started {DateTime.Now} ===\n");
+        File.WriteAllText(LogPath, $"=== Shelly started {DateTime.Now} ===\n");
     }
 
     public static void Log(string message)

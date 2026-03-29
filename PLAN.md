@@ -1,4 +1,4 @@
-# Notchy Windows — Plan & TODO
+# Shelly — Plan & TODO
 
 ## TODO
 

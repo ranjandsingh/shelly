@@ -1,11 +1,11 @@
 using Microsoft.Win32;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class AutoStartManager
 {
     private const string RegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "NotchyWindows";
+    private const string AppName = "Shelly";
 
     public static bool IsEnabled
     {

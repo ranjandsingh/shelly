@@ -1,8 +1,8 @@
 using System.Text;
 using System.Windows;
-using NotchyWindows.Models;
+using Shelly.Models;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class StatusParser
 {

@@ -13,7 +13,7 @@
     <Version>0.1.0</Version>
 
     <!-- Assembly metadata -->
-    <Product>Notchy Windows</Product>
+    <Product>Shelly</Product>
     <Company>ranjandsingh</Company>
     <Authors>ranjandsingh</Authors>
     <Description>A floating terminal panel for Windows with IDE project detection</Description>

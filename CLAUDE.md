@@ -5,14 +5,14 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Build
 
 ```bash
-dotnet build NotchyWindows.sln
+dotnet build Shelly.sln
 ```
 
-Or open `NotchyWindows.sln` in Visual Studio / Rider and build (Ctrl+Shift+B).
+Or open `Shelly.sln` in Visual Studio / Rider and build (Ctrl+Shift+B).
 
 To run:
 ```bash
-dotnet run --project NotchyWindows
+dotnet run --project Shelly.csproj
 ```
 
 There are no tests configured yet.
@@ -23,7 +23,7 @@ Do not add `Co-Authored-By` lines to commit messages.
 
 ## Overview
 
-Notchy Windows is a Windows system tray app that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. When the user clicks the tray icon or presses Ctrl+`, a floating panel appears with embedded terminal sessions (via xterm.js in WebView2 backed by ConPTY) that auto-`cd` into detected IDE project directories and launch `claude`.
+Shelly is a Windows system tray app that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. When the user clicks the tray icon or presses Ctrl+`, a floating panel appears with embedded terminal sessions (via xterm.js in WebView2 backed by ConPTY) that auto-`cd` into detected IDE project directories and launch `claude`.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ Notchy Windows is a Windows system tray app that provides a floating terminal pa
 
 **IDE detection**: `IdeDetector` uses `EnumWindows` + window title parsing to detect open VS Code and JetBrains IDE projects.
 
-**Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/notchy-snapshots/<project>/<timestamp>`) with a temporary `GIT_INDEX_FILE`.
+**Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/shelly-snapshots/<project>/<timestamp>`) with a temporary `GIT_INDEX_FILE`.
 
 **Global hotkey**: `HotkeyManager` registers Ctrl+` via Win32 `RegisterHotKey`.
 

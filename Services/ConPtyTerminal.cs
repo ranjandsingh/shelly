@@ -1,9 +1,9 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using NotchyWindows.Interop;
+using Shelly.Interop;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public class ConPtyTerminal : IDisposable
 {

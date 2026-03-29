@@ -1,13 +1,13 @@
 using System.IO;
 using System.Text.Json;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class SessionPersistence
 {
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "NotchyWindows", "sessions.json");
+        "Shelly", "sessions.json");
 
     public static void Save()
     {

@@ -2,9 +2,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
-using NotchyWindows.Models;
+using Shelly.Models;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public class SessionStore : INotifyPropertyChanged
 {

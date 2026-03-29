@@ -2,11 +2,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using NotchyWindows.Interop;
-using NotchyWindows.Models;
-using NotchyWindows.Services;
+using Shelly.Interop;
+using Shelly.Models;
+using Shelly.Services;
 
-namespace NotchyWindows.Views;
+namespace Shelly.Views;
 
 public partial class SessionTabBar : UserControl
 {
@@ -119,7 +119,7 @@ public partial class SessionTabBar : UserControl
         autoStartItem.Click += (_, _) => AutoStartManager.Toggle();
         menu.Items.Add(autoStartItem);
 
-        var quitItem = new MenuItem { Header = "Quit Notchy" };
+        var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
         menu.Items.Add(quitItem);
 

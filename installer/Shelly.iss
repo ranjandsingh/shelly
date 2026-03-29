@@ -1,10 +1,10 @@
-#define MyAppName "Notchy Windows"
+#define MyAppName "Shelly"
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
 #endif
 #define MyAppPublisher "ranjandsingh"
-#define MyAppURL "https://github.com/ranjandsingh/notchy-windows"
-#define MyAppExeName "NotchyWindows.exe"
+#define MyAppURL "https://github.com/ranjandsingh/shelly"
+#define MyAppExeName "Shelly.exe"
 
 [Setup]
 AppId={{8F2B4A6E-3C1D-4E7F-9A5B-2D8C6F0E1A3B}
@@ -18,8 +18,8 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\LICENSE
-OutputBaseFilename=NotchyWindows-{#MyAppVersion}-setup
-SetupIconFile=..\NotchyWindows\Resources\tray-icon.ico
+OutputBaseFilename=Shelly-{#MyAppVersion}-setup
+SetupIconFile=..\Resources\tray-icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace NotchyWindows.Interop;
+namespace Shelly.Interop;
 
 internal static class NativeMethods
 {

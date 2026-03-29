@@ -5,10 +5,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using NotchyWindows.Interop;
-using NotchyWindows.Services;
+using Shelly.Interop;
+using Shelly.Services;
 
-namespace NotchyWindows.Views;
+namespace Shelly.Views;
 
 public partial class FloatingPanel : Window
 {
@@ -368,9 +368,9 @@ public partial class FloatingPanel : Window
         var success = await CheckpointManager.CreateCheckpoint(session.ProjectPath, session.ProjectName);
         if (success)
         {
-            Title = "Notchy — Checkpoint Saved";
+            Title = "Shelly — Checkpoint Saved";
             await Task.Delay(2000);
-            Title = "Notchy";
+            Title = "Shelly";
         }
     }
 

@@ -1,16 +1,16 @@
 using System.Diagnostics;
 using System.IO;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class CheckpointManager
 {
     public static async Task<bool> CreateCheckpoint(string projectPath, string projectName)
     {
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
-        var refName = $"refs/notchy-snapshots/{projectName}/{timestamp}";
+        var refName = $"refs/shelly-snapshots/{projectName}/{timestamp}";
 
-        var tempIndex = Path.Combine(Path.GetTempPath(), $"notchy-index-{Guid.NewGuid()}");
+        var tempIndex = Path.Combine(Path.GetTempPath(), $"shelly-index-{Guid.NewGuid()}");
 
         try
         {
@@ -32,7 +32,7 @@ public static class CheckpointManager
 
             // Create commit
             var commitHash = await RunGit(projectPath,
-                $"commit-tree {treeHash.Trim()} -m \"Notchy checkpoint {timestamp}\"", env);
+                $"commit-tree {treeHash.Trim()} -m \"Shelly checkpoint {timestamp}\"", env);
             if (string.IsNullOrWhiteSpace(commitHash)) return false;
 
             // Update ref
@@ -49,7 +49,7 @@ public static class CheckpointManager
     public static async Task<List<CheckpointEntry>> ListCheckpoints(string projectPath, string projectName)
     {
         var output = await RunGit(projectPath,
-            $"for-each-ref --format=%(refname):%(objectname):%(creatordate:iso8601) refs/notchy-snapshots/{projectName}/");
+            $"for-each-ref --format=%(refname):%(objectname):%(creatordate:iso8601) refs/shelly-snapshots/{projectName}/");
 
         if (string.IsNullOrWhiteSpace(output))
             return new List<CheckpointEntry>();

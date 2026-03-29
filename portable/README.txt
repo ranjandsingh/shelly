@@ -1,12 +1,12 @@
-Notchy Windows - Portable Edition
-==================================
+Shelly - Portable Edition
+=========================
 
 A floating terminal panel for Windows with IDE project detection.
 
 Getting Started
 ---------------
 1. Extract this ZIP anywhere on your computer.
-2. Run NotchyWindows.exe
+2. Run Shelly.exe
 3. The app will appear in your system tray. Press Ctrl+` to toggle the panel.
 
 Requirements
@@ -19,14 +19,14 @@ https://developer.microsoft.com/en-us/microsoft-edge/webview2/
 
 Start with Windows
 ------------------
-To launch Notchy Windows at startup, create a shortcut to NotchyWindows.exe
+To launch Shelly at startup, create a shortcut to Shelly.exe
 and place it in your Startup folder:
   1. Press Win+R, type "shell:startup", press Enter
   2. Paste the shortcut there
 
 Settings
 --------
-Settings are stored in: %APPDATA%\NotchyWindows\
+Settings are stored in: %APPDATA%\Shelly\
 
 License: MIT
-Source:  https://github.com/ranjandsingh/notchy-windows
+Source:  https://github.com/ranjandsingh/shelly

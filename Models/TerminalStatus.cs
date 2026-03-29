@@ -1,4 +1,4 @@
-namespace NotchyWindows.Models;
+namespace Shelly.Models;
 
 public enum TerminalStatus
 {

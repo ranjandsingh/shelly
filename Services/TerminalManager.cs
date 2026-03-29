@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Windows;
-using NotchyWindows.Models;
+using Shelly.Models;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public class TerminalManager
 {

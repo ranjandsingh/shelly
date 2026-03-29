@@ -1,6 +1,6 @@
 using System.Media;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class SoundPlayer
 {

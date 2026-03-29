@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace NotchyWindows.Models;
+namespace Shelly.Models;
 
 public class TerminalSession : INotifyPropertyChanged
 {

@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Interop;
 
-namespace NotchyWindows.Interop;
+namespace Shelly.Interop;
 
 public class HotkeyManager
 {

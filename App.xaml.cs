@@ -2,10 +2,10 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using Hardcodet.Wpf.TaskbarNotification;
-using NotchyWindows.Services;
-using NotchyWindows.Views;
+using Shelly.Services;
+using Shelly.Views;
 
-namespace NotchyWindows;
+namespace Shelly;
 
 public partial class App : Application
 {
@@ -19,10 +19,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         // Single-instance check
-        _singleInstanceMutex = new Mutex(true, "NotchyWindows_SingleInstance", out bool createdNew);
+        _singleInstanceMutex = new Mutex(true, "Shelly_SingleInstance", out bool createdNew);
         if (!createdNew)
         {
-            MessageBox.Show("Notchy Windows is already running.", "Notchy", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Shelly is already running.", "Shelly", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
@@ -40,7 +40,7 @@ public partial class App : Application
         {
             IconSource = new System.Windows.Media.Imaging.BitmapImage(
                 new Uri("pack://application:,,,/Resources/tray-icon.ico")),
-            ToolTipText = "Notchy Windows"
+            ToolTipText = "Shelly"
         };
 
         _trayIcon.TrayLeftMouseUp += (_, _) => TogglePanel();
@@ -106,7 +106,7 @@ public partial class App : Application
 
         contextMenu.Items.Add(new Separator());
 
-        var quitItem = new MenuItem { Header = "Quit Notchy" };
+        var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) =>
         {
             _trayIcon?.Dispose();

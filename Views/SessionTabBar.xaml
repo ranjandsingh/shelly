@@ -1,4 +1,4 @@
-<UserControl x:Class="NotchyWindows.Views.SessionTabBar"
+<UserControl x:Class="Shelly.Views.SessionTabBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinHeight="40" Height="40"

@@ -2,9 +2,9 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Timers;
-using NotchyWindows.Interop;
+using Shelly.Interop;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public class IdeDetector
 {

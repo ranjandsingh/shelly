@@ -3,9 +3,9 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Web.WebView2.Core;
-using NotchyWindows.Services;
+using Shelly.Services;
 
-namespace NotchyWindows.Views;
+namespace Shelly.Views;
 
 public partial class TerminalHostControl : UserControl
 {
@@ -49,7 +49,7 @@ public partial class TerminalHostControl : UserControl
     {
         Logger.Log("TerminalHostControl: InitializeWebView start");
 
-        var userDataFolder = Path.Combine(Path.GetTempPath(), "NotchyWindows_WebView2");
+        var userDataFolder = Path.Combine(Path.GetTempPath(), "Shelly_WebView2");
         Logger.Log($"TerminalHostControl: WebView2 userDataFolder={userDataFolder}");
 
         var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);

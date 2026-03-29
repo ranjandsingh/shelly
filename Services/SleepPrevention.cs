@@ -1,6 +1,6 @@
-using NotchyWindows.Interop;
+using Shelly.Interop;
 
-namespace NotchyWindows.Services;
+namespace Shelly.Services;
 
 public static class SleepPrevention
 {
