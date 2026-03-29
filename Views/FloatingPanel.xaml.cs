@@ -288,10 +288,12 @@ public partial class FloatingPanel : Window
         // IDE detection disabled — title-based detection doesn't reliably resolve full paths
         // IdeDetector.Instance.StartPolling();
 
-        // Clear TaskCompleted when the user opens the panel to see the session
-        var activeId = SessionStore.Instance.ActiveSessionId;
-        if (activeId.HasValue)
-            Services.StatusParser.AcknowledgeCompletion(activeId.Value);
+        // Clear TaskCompleted for all sessions when the user opens the panel
+        foreach (var s in SessionStore.Instance.Sessions)
+        {
+            if (s.Status == Models.TerminalStatus.TaskCompleted)
+                Services.StatusParser.AcknowledgeCompletion(s.Id);
+        }
 
         // Focus terminal
         Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
@@ -348,9 +350,8 @@ public partial class FloatingPanel : Window
             ExpandedPanel.Visibility = Visibility.Collapsed;
             CollapsedBar.Visibility = Visibility.Visible;
             TerminalHost.Visibility = Visibility.Visible; // restore for next expand
-            Width = _iconVisible ? CollapsedWidthWithIcon : CollapsedWidth;
-            Height = _iconVisible ? CollapsedHeightWithIcon : CollapsedHeight;
-            PositionCenter();
+            // Let UpdateCollapsedBar handle all width/height/position
+            UpdateCollapsedBarSync();
 
             if (!SessionStore.Instance.IsPinned)
                 IdeDetector.Instance.StopPolling();
@@ -402,62 +403,117 @@ public partial class FloatingPanel : Window
         }
     }
 
+    /// <summary>Queue a collapsed bar update on the dispatcher (used by event handlers).</summary>
     private void UpdateCollapsedBar()
     {
-        Dispatcher.InvokeAsync(() =>
+        Dispatcher.InvokeAsync(UpdateCollapsedBarSync);
+    }
+
+    /// <summary>Synchronously update collapsed bar indicators, mascot icon, and size.
+    /// Must be called on the UI thread.</summary>
+    private void UpdateCollapsedBarSync()
+    {
+        var sessions = SessionStore.Instance.Sessions;
+
+        // Count sessions per status type
+        int workingCount = 0, waitingCount = 0, completedCount = 0, interruptedCount = 0;
+        foreach (var s in sessions)
         {
-            var sessions = SessionStore.Instance.Sessions;
-
-            // Determine highest-priority status across ALL sessions
-            // Priority: WaitingForInput > Working > TaskCompleted > Interrupted > Idle
-            var overallStatus = Models.TerminalStatus.Idle;
-            foreach (var s in sessions)
+            switch (s.Status)
             {
-                if (s.Status == Models.TerminalStatus.WaitingForInput)
-                    { overallStatus = Models.TerminalStatus.WaitingForInput; break; }
-                if (s.Status == Models.TerminalStatus.Working && overallStatus != Models.TerminalStatus.WaitingForInput)
-                    overallStatus = Models.TerminalStatus.Working;
-                if (s.Status == Models.TerminalStatus.TaskCompleted && overallStatus == Models.TerminalStatus.Idle)
-                    overallStatus = Models.TerminalStatus.TaskCompleted;
-                if (s.Status == Models.TerminalStatus.Interrupted && overallStatus == Models.TerminalStatus.Idle)
-                    overallStatus = Models.TerminalStatus.Interrupted;
+                case Models.TerminalStatus.Working: workingCount++; break;
+                case Models.TerminalStatus.WaitingForInput: waitingCount++; break;
+                case Models.TerminalStatus.TaskCompleted: completedCount++; break;
+                case Models.TerminalStatus.Interrupted: interruptedCount++; break;
             }
+        }
 
-            // Hide all indicators first
-            CollapsedStatusDot.Visibility = Visibility.Collapsed;
-            CollapsedSpinner.Visibility = Visibility.Collapsed;
-            CollapsedAlertDot.Visibility = Visibility.Collapsed;
-            CollapsedCheckmark.Visibility = Visibility.Collapsed;
-            StopAnimations();
+        // Determine highest-priority status for mascot icon
+        var overallStatus = waitingCount > 0 ? Models.TerminalStatus.WaitingForInput
+            : workingCount > 0 ? Models.TerminalStatus.Working
+            : completedCount > 0 ? Models.TerminalStatus.TaskCompleted
+            : interruptedCount > 0 ? Models.TerminalStatus.Interrupted
+            : Models.TerminalStatus.Idle;
 
-            // Show mascot icon + status indicator side by side
-            switch (overallStatus)
+        // Hide all groups and stop animations first
+        WorkingGroup.Visibility = Visibility.Collapsed;
+        WaitingGroup.Visibility = Visibility.Collapsed;
+        CompletedGroup.Visibility = Visibility.Collapsed;
+        InterruptedGroup.Visibility = Visibility.Collapsed;
+        StopAnimations();
+
+        // Show each status group with count badge (hidden when count is 1)
+        if (workingCount > 0)
+        {
+            WorkingGroup.Visibility = Visibility.Visible;
+            WorkingCount.Text = workingCount.ToString();
+            WorkingCount.Visibility = workingCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+            StartSpinnerAnimation();
+        }
+        if (waitingCount > 0)
+        {
+            WaitingGroup.Visibility = Visibility.Visible;
+            WaitingCount.Text = waitingCount.ToString();
+            WaitingCount.Visibility = waitingCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+            StartPulseAnimation();
+        }
+        if (completedCount > 0)
+        {
+            CompletedGroup.Visibility = Visibility.Visible;
+            CompletedCount.Text = completedCount.ToString();
+            CompletedCount.Visibility = completedCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (interruptedCount > 0)
+        {
+            InterruptedGroup.Visibility = Visibility.Visible;
+            InterruptedCount.Text = interruptedCount.ToString();
+            InterruptedCount.Visibility = interruptedCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // Mascot icon reflects highest-priority status
+        switch (overallStatus)
+        {
+            case Models.TerminalStatus.Working: ShowCollapsedIcon(IconProcessing); break;
+            case Models.TerminalStatus.WaitingForInput: ShowCollapsedIcon(IconWaiting); break;
+            case Models.TerminalStatus.TaskCompleted: ShowCollapsedIcon(IconSuccess); break;
+            case Models.TerminalStatus.Interrupted: ShowCollapsedIcon(IconIdle); break;
+            case Models.TerminalStatus.Idle:
+                if (!_greetingActive) HideCollapsedIcon();
+                break;
+        }
+
+        // Dynamic width/height based on visible groups
+        if (!_isExpanded)
+        {
+            if (overallStatus != Models.TerminalStatus.Idle)
             {
-                case Models.TerminalStatus.Working:
-                    ShowCollapsedIcon(IconProcessing);
-                    CollapsedSpinner.Visibility = Visibility.Visible;
-                    StartSpinnerAnimation();
-                    break;
-                case Models.TerminalStatus.WaitingForInput:
-                    ShowCollapsedIcon(IconWaiting);
-                    CollapsedAlertDot.Visibility = Visibility.Visible;
-                    StartPulseAnimation();
-                    break;
-                case Models.TerminalStatus.TaskCompleted:
-                    ShowCollapsedIcon(IconSuccess);
-                    CollapsedCheckmark.Visibility = Visibility.Visible;
-                    break;
-                case Models.TerminalStatus.Interrupted:
-                    ShowCollapsedIcon(IconIdle);
-                    CollapsedStatusDot.Visibility = Visibility.Visible;
-                    CollapsedStatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50));
-                    break;
-                case Models.TerminalStatus.Idle:
-                    if (!_greetingActive)
-                        HideCollapsedIcon();
-                    break;
+                // Icon area (56px) + indicator groups
+                Width = GetCollapsedBarWidth(workingCount, waitingCount, completedCount, interruptedCount);
+                Height = CollapsedHeightWithIcon;
             }
-        });
+            else if (!_greetingActive && !_iconVisible)
+            {
+                Width = CollapsedWidth;
+                Height = CollapsedHeight;
+            }
+            PositionCenter();
+        }
+    }
+
+    private double GetCollapsedBarWidth(int workingCount, int waitingCount, int completedCount, int interruptedCount)
+    {
+        // 56 = mascot icon (24px) + icon margin (6px) + bar Padding (10px * 2) + extra (6px)
+        // Per group: Canvas 14px wide (or 8px for Interrupted Ellipse) + Margin 1px each side
+        //   without count badge: 16px (14+2) or 12px (8+4) for interrupted
+        //   with count badge: +12px for TextBlock (~10px text + 2px margin)
+        double width = 56;
+        int visibleGroups = 0;
+        if (workingCount > 0) { visibleGroups++; width += workingCount > 1 ? 28 : 16; }
+        if (waitingCount > 0) { visibleGroups++; width += waitingCount > 1 ? 28 : 16; }
+        if (completedCount > 0) { visibleGroups++; width += completedCount > 1 ? 28 : 16; }
+        if (interruptedCount > 0) { visibleGroups++; width += interruptedCount > 1 ? 24 : 12; }
+        if (visibleGroups > 1) width += (visibleGroups - 1) * 2;
+        return Math.Max(width, CollapsedWidthWithIcon);
     }
 
     private void ShowCollapsedIcon(BitmapImage icon)
@@ -471,9 +527,8 @@ public partial class FloatingPanel : Window
 
             if (!_isExpanded)
             {
-                Width = CollapsedWidthWithIcon;
                 Height = CollapsedHeightWithIcon;
-                PositionCenter();
+                // Width is set by UpdateCollapsedBar after all groups are configured
             }
 
             var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300))

@@ -152,6 +152,10 @@ public static class StatusParser
             if (oldStatus == TerminalStatus.TaskCompleted && newStatus == TerminalStatus.Idle)
                 return;
 
+            // Don't show WaitingForInput if Claude hasn't started processing yet
+            if (oldStatus == TerminalStatus.Idle && newStatus == TerminalStatus.WaitingForInput)
+                return;
+
             // Sticky: don't drop from Working to Idle too quickly (polling can miss spinner)
             if (oldStatus == TerminalStatus.Working && newStatus == TerminalStatus.Idle)
             {
