@@ -80,22 +80,63 @@ public class TerminalManager
             var hasClaude = !skipClaude && AppSettings.LoadAutoLaunchClaude() && File.Exists(claudeMdPath);
             Logger.Log($"TerminalManager: projectPath={projectPath}, hasClaude={hasClaude}, skipClaude={skipClaude}");
 
+            var alreadyInProject = string.Equals(workingDirectory, projectPath, StringComparison.OrdinalIgnoreCase);
             var shellName = Path.GetFileNameWithoutExtension(ConPtyTerminal.DefaultShell).ToLower();
-            var cdCommand = shellName switch
-            {
-                "bash" => hasClaude
-                    ? $"cd '{projectPath.Replace("\\", "/")}' && clear && claude\r\n"
-                    : $"cd '{projectPath.Replace("\\", "/")}' && clear\r\n",
-                "powershell" or "pwsh" => hasClaude
-                    ? $"cd '{projectPath}'; clear; claude\r\n"
-                    : $"cd '{projectPath}'; clear\r\n",
-                _ => hasClaude  // cmd
-                    ? $"cd \"{projectPath}\" && cls && claude\r\n"
-                    : $"cd \"{projectPath}\" && cls\r\n",
-            };
+            string cdCommand;
 
-            // Small delay to let shell initialize
-            Task.Delay(500).ContinueWith(_ => terminal.WriteInput(cdCommand));
+            if (alreadyInProject)
+            {
+                // Shell already started in projectPath via CreateProcessW — skip cd
+                cdCommand = shellName switch
+                {
+                    "bash" => hasClaude ? "clear && claude\r\n" : "clear\r\n",
+                    "powershell" or "pwsh" => hasClaude ? "clear; claude\r\n" : "clear\r\n",
+                    _ => hasClaude ? "cls && claude\r\n" : "cls\r\n",
+                };
+            }
+            else
+            {
+                cdCommand = shellName switch
+                {
+                    "bash" => hasClaude
+                        ? $"cd '{projectPath.Replace("\\", "/")}' && clear && claude\r\n"
+                        : $"cd '{projectPath.Replace("\\", "/")}' && clear\r\n",
+                    "powershell" or "pwsh" => hasClaude
+                        ? $"cd '{projectPath}'; clear; claude\r\n"
+                        : $"cd '{projectPath}'; clear\r\n",
+                    _ => hasClaude
+                        ? $"cd \"{projectPath}\" && cls && claude\r\n"
+                        : $"cd \"{projectPath}\" && cls\r\n",
+                };
+            }
+
+            // Wait for the shell to produce its first output (the prompt) before sending
+            // the cd+claude command. Bash on Windows can take 1-3s to load its profile.
+            var shellReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Action<byte[]>? readyHandler = null;
+            readyHandler = _ =>
+            {
+                terminal.OutputReceived -= readyHandler;
+                shellReady.TrySetResult(true);
+            };
+            terminal.OutputReceived += readyHandler;
+
+            Task.Run(async () =>
+            {
+                var completed = await Task.WhenAny(shellReady.Task, Task.Delay(3000));
+                if (completed != shellReady.Task)
+                {
+                    terminal.OutputReceived -= readyHandler;
+                    Logger.Log($"TerminalManager: shell ready timeout for session {sessionId}, sending command anyway");
+                }
+                else
+                {
+                    Logger.Log($"TerminalManager: shell ready detected for session {sessionId}");
+                }
+
+                await Task.Delay(100);
+                terminal.WriteInput(cdCommand);
+            });
         }
     }
 

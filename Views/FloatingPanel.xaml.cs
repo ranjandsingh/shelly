@@ -22,11 +22,11 @@ public partial class FloatingPanel : Window
     private bool _iconVisible; // tracks whether the mascot icon is currently shown
     private bool _greetingActive; // prevents UpdateCollapsedBar from hiding during greeting
     private const double CollapsedWidth = 48;
-    private const double CollapsedWidthWithIcon = 80;
-    private const double CollapsedWidthGreeting = 116;
+    private const double CollapsedWidthWithIcon = 84;
+    private const double CollapsedWidthGreeting = 124;
     private const double CollapsedHeight = 18;
-    private const double CollapsedHeightWithIcon = 32;
-    private const double CollapsedHeightGreeting = 40;
+    private const double CollapsedHeightWithIcon = 36;
+    private const double CollapsedHeightGreeting = 48;
 
     // Mascot icon images for each status
     private static readonly BitmapImage IconIdle = LoadIcon("Resources/icon.png");
@@ -198,8 +198,8 @@ public partial class FloatingPanel : Window
             {
                 CollapsedIcon.Opacity = 1;
                 CollapsedIcon.Visibility = Visibility.Collapsed;
-                CollapsedIcon.Width = 20;
-                CollapsedIcon.Height = 20;
+                CollapsedIcon.Width = 24;
+                CollapsedIcon.Height = 24;
                 CollapsedGreeting.Opacity = 1;
                 CollapsedGreeting.Visibility = Visibility.Collapsed;
                 CollapsedBar.CornerRadius = new CornerRadius(8);
@@ -573,7 +573,11 @@ public partial class FloatingPanel : Window
             switch (e.Key)
             {
                 // Ctrl+S checkpoint disabled — Claude Code has built-in checkpoints
-                case Key.T: SessionStore.Instance.AddSession(); e.Handled = true; break;
+                case Key.T:
+                    var newSession = SessionStore.Instance.AddSession();
+                    SessionStore.Instance.SelectSession(newSession.Id);
+                    e.Handled = true;
+                    break;
                 case Key.W:
                     var activeId = SessionStore.Instance.ActiveSessionId;
                     if (activeId.HasValue && SessionStore.Instance.Sessions.Count > 1)

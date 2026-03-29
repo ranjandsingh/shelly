@@ -37,6 +37,13 @@ public partial class App : Application
         // IDE detection disabled — title-based detection doesn't reliably resolve full paths
         // IdeDetector.Instance.Detect();
 
+        // Restore saved default shell preference
+        var savedShell = AppSettings.LoadDefaultShell();
+        if (savedShell != null && System.IO.File.Exists(savedShell))
+            ConPtyTerminal.DefaultShell = savedShell;
+        else if (savedShell != null)
+            AppSettings.SaveDefaultShell(null); // clear stale preference
+
         // Ensure there's at least one session (e.g., first launch or remember disabled)
         SessionStore.Instance.EnsureDefaultSession();
 
@@ -130,6 +137,7 @@ public partial class App : Application
             item.Click += (_, _) =>
             {
                 ConPtyTerminal.DefaultShell = shellPath;
+                AppSettings.SaveDefaultShell(shellPath);
                 BuildTrayContextMenu();
             };
             shellMenu.Items.Add(item);

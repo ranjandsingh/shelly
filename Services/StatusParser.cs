@@ -30,9 +30,10 @@ public static class StatusParser
         }
 
         // Fast-path: detect START of working from raw output.
-        // Only transition TO Working from Idle/TaskCompleted — don't override
-        // WaitingForInput or other states (terminal redraws can contain stale indicators).
-        if (session.Status is TerminalStatus.Idle or TerminalStatus.TaskCompleted)
+        // Only from Idle — raw output contains stale indicators during redraws,
+        // so don't transition from TaskCompleted (causes sound loop).
+        // The visible text parser handles TaskCompleted → Working reliably.
+        if (session.Status is TerminalStatus.Idle)
         {
             if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("Clauding", StringComparison.OrdinalIgnoreCase) ||
@@ -88,18 +89,16 @@ public static class StatusParser
         if (bottom3.Contains("Writing") && bottom3.Contains("file"))
         { result = TerminalStatus.Working; goto done; }
 
-        // === COMPLETED: "✻ Cogitated for 4m 2s" etc. ===
-        // Spinner char + "for" + time duration = Claude just finished a task.
-        // Check before WaitingForInput so stale approval text doesn't win.
-        var bottom5 = string.Join("\n", lines.TakeLast(5));
-        if (CompletionPattern.IsMatch(bottom5))
-        { result = TerminalStatus.Idle; goto done; }
-
         // === WAITING FOR INPUT: from bottom 8 lines ===
-        // Edit approval
+        // Check BEFORE completion — if user action is needed, that takes priority
+        // over a completion message still visible on screen.
         if (bottom8.Contains("Esc to cancel", StringComparison.OrdinalIgnoreCase))
         { result = TerminalStatus.WaitingForInput; goto done; }
         if (bottom8.Contains("Do you want to proceed", StringComparison.OrdinalIgnoreCase))
+        { result = TerminalStatus.WaitingForInput; goto done; }
+        if (bottom8.Contains("Would you like to proceed", StringComparison.OrdinalIgnoreCase))
+        { result = TerminalStatus.WaitingForInput; goto done; }
+        if (bottom8.Contains("Do you want to make this edit", StringComparison.OrdinalIgnoreCase))
         { result = TerminalStatus.WaitingForInput; goto done; }
         if (bottom8.Contains("Yes / No", StringComparison.OrdinalIgnoreCase))
         { result = TerminalStatus.WaitingForInput; goto done; }
@@ -109,12 +108,25 @@ public static class StatusParser
         // Plan mode approval menu
         if (bottom8.Contains("Keep planning", StringComparison.OrdinalIgnoreCase))
         { result = TerminalStatus.WaitingForInput; goto done; }
-        // Selection menu with ❯ and numbered options (plan approval, etc.)
+        // Plan execution approval
+        if (bottom8.Contains("auto-accept edits", StringComparison.OrdinalIgnoreCase))
+        { result = TerminalStatus.WaitingForInput; goto done; }
+        // Selection menu with ❯ or ? selector and numbered options (plan approval, permission prompts, etc.)
+        // Pattern: leading whitespace, selector char (❯ or ?), space, digit
         foreach (var line in lines.TakeLast(8))
         {
-            if (line.Contains("❯") && line.Any(char.IsDigit))
+            var trimmed = line.TrimStart();
+            if ((trimmed.StartsWith("❯") || trimmed.StartsWith("?")) &&
+                trimmed.Length > 1 && trimmed.Substring(1).TrimStart().Any(char.IsDigit))
             { result = TerminalStatus.WaitingForInput; goto done; }
         }
+
+        // === COMPLETED: "✻ Cogitated for 4m 2s" etc. ===
+        // Spinner char + "for" + time duration = Claude just finished a task.
+        // Only matches if no waiting-for-input prompt is visible.
+        var bottom5 = string.Join("\n", lines.TakeLast(5));
+        if (CompletionPattern.IsMatch(bottom5))
+        { result = TerminalStatus.Idle; goto done; }
 
         result = TerminalStatus.Idle;
 
@@ -171,10 +183,10 @@ public static class StatusParser
         {
             session.Status = newStatus;
 
-            // Sound notifications on key transitions
-            if (newStatus == TerminalStatus.WaitingForInput)
-                SoundPlayer.PlayWaitingForInput();
-            else if (newStatus == TerminalStatus.TaskCompleted)
+            // Sound notification: WaitingForInput disabled (plays on every expand due to status re-fire bug)
+            // if (newStatus == TerminalStatus.WaitingForInput)
+            //     SoundPlayer.PlayWaitingForInput();
+            if (newStatus == TerminalStatus.TaskCompleted)
                 SoundPlayer.PlayTaskCompleted();
         });
     }
@@ -188,6 +200,7 @@ public static class StatusParser
 
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
+            if (session.Status == TerminalStatus.TaskCompleted) return;
             session.Status = TerminalStatus.TaskCompleted;
             SoundPlayer.PlayTaskCompleted();
         });
@@ -217,6 +230,7 @@ public static class StatusParser
             {
                 Application.Current.Dispatcher.InvokeAsync(() =>
                 {
+                    if (session.Status == TerminalStatus.TaskCompleted) return;
                     session.Status = TerminalStatus.TaskCompleted;
                     SoundPlayer.PlayTaskCompleted();
                 });

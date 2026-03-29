@@ -125,6 +125,12 @@
         // Signal that JS is ready
         console.log('xterm.js initialized, cols=' + term.cols + ' rows=' + term.rows);
 
+        function setFontSize(size) {
+            console.log('setFontSize: ' + size);
+            term.options.fontSize = size;
+            fitAddon.fit();
+        }
+
         function terminalGetVisibleText() {
             const buffer = term.buffer.active;
             const rows = term.rows;

@@ -153,10 +153,36 @@ public partial class SessionTabBar : UserControl
                 Header = label,
                 IsChecked = string.Equals(ConPtyTerminal.DefaultShell, shellPath, System.StringComparison.OrdinalIgnoreCase)
             };
-            item.Click += (_, _) => ConPtyTerminal.DefaultShell = shellPath;
+            item.Click += (_, _) =>
+            {
+                ConPtyTerminal.DefaultShell = shellPath;
+                AppSettings.SaveDefaultShell(shellPath);
+            };
             shellMenu.Items.Add(item);
         }
         settingsMenu.Items.Add(shellMenu);
+
+        // Text size submenu
+        var textSizeMenu = new MenuItem { Header = "Text Size" };
+        var currentFontSize = AppSettings.LoadFontSize();
+        var sizes = new[] { ("Small", 9), ("Medium", 11), ("Large", 14), ("Extra Large", 18) };
+        foreach (var (label, size) in sizes)
+        {
+            var s = size;
+            var item2 = new MenuItem
+            {
+                Header = label,
+                IsChecked = currentFontSize == s
+            };
+            item2.Click += (_, _) =>
+            {
+                AppSettings.SaveFontSize(s);
+                if (Window.GetWindow(this) is FloatingPanel panel)
+                    panel.TerminalHost.ApplyFontSize(s);
+            };
+            textSizeMenu.Items.Add(item2);
+        }
+        settingsMenu.Items.Add(textSizeMenu);
 
         // Keybinding option
         var hkMgr = (Application.Current as App)?.HotkeyManager;

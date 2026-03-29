@@ -30,7 +30,7 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                         HorizontalAlignment="Center">
                 <!-- Mascot icon — shown on launch greeting and when status is active -->
-                <Image x:Name="CollapsedIcon" Width="20" Height="20"
+                <Image x:Name="CollapsedIcon" Width="24" Height="24"
                        Visibility="Collapsed" Margin="0,0,6,0"
                        RenderOptions.BitmapScalingMode="HighQuality"/>
 
@@ -45,7 +45,7 @@
                          Fill="#FF4CAF50" Visibility="Collapsed"/>
 
                 <!-- Spinner (working) — spinning arc -->
-                <Canvas x:Name="CollapsedSpinner" Width="10" Height="10"
+                <Canvas x:Name="CollapsedSpinner" Width="14" Height="14"
                         Visibility="Collapsed"
                         RenderTransformOrigin="0.5,0.5">
                     <Canvas.RenderTransform>
@@ -56,7 +56,7 @@
                 </Canvas>
 
                 <!-- Alert triangle (waiting for input) — pulsing yellow -->
-                <Canvas x:Name="CollapsedAlertDot" Width="10" Height="10"
+                <Canvas x:Name="CollapsedAlertDot" Width="14" Height="14"
                         Visibility="Collapsed"
                         RenderTransformOrigin="0.5,0.5">
                     <Canvas.RenderTransform>
@@ -66,7 +66,7 @@
                 </Canvas>
 
                 <!-- Checkmark (task completed) -->
-                <Canvas x:Name="CollapsedCheckmark" Width="10" Height="10"
+                <Canvas x:Name="CollapsedCheckmark" Width="14" Height="14"
                         Visibility="Collapsed">
                     <Path Data="M1,5 L4,8 L9,2" Stroke="#FF4CAF50"
                           StrokeThickness="2" StrokeStartLineCap="Round"

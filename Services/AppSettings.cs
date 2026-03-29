@@ -17,6 +17,8 @@ public static class AppSettings
         public bool AutoCheckUpdates { get; set; } = true;
         public bool AutoLaunchClaude { get; set; } = true;
         public bool ShowHints { get; set; } = true;
+        public int FontSize { get; set; } = 11;
+        public string? DefaultShell { get; set; }
         public string? LastUpdateCheck { get; set; }
         public string? DismissedUpdateVersion { get; set; }
     }
@@ -87,6 +89,24 @@ public static class AppSettings
     {
         var data = LoadData();
         data.ShowHints = value;
+        SaveData(data);
+    }
+
+    public static int LoadFontSize() => LoadData().FontSize;
+
+    public static void SaveFontSize(int value)
+    {
+        var data = LoadData();
+        data.FontSize = value;
+        SaveData(data);
+    }
+
+    public static string? LoadDefaultShell() => LoadData().DefaultShell;
+
+    public static void SaveDefaultShell(string? value)
+    {
+        var data = LoadData();
+        data.DefaultShell = value;
         SaveData(data);
     }
 
