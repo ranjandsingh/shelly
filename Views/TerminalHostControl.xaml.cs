@@ -156,8 +156,15 @@ public partial class TerminalHostControl : UserControl
 
         if (isNew)
         {
-            // New terminal: query xterm size, reset, set handler, then create terminal
+            // New terminal: reset, apply font size, query xterm size, then create terminal
             // at the correct size so no resize is needed (resize during shell startup deadlocks ConPTY).
+            Logger.Log("TerminalHostControl: calling terminalReset()");
+            await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
+
+            var fontSize = AppSettings.LoadFontSize();
+            if (fontSize != 11)
+                await WebView.CoreWebView2.ExecuteScriptAsync($"setFontSize({fontSize})");
+
             var sizeJson = await WebView.CoreWebView2.ExecuteScriptAsync("JSON.stringify({cols:term.cols,rows:term.rows})");
             short cols = 120, rows = 30;
             try
@@ -171,9 +178,6 @@ public partial class TerminalHostControl : UserControl
                 Logger.Log($"TerminalHostControl: size query parse error: {ex.Message}");
             }
             Logger.Log($"TerminalHostControl: xterm size={cols}x{rows}");
-
-            Logger.Log("TerminalHostControl: calling terminalReset()");
-            await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
 
             Logger.Log($"TerminalHostControl: setting output handler for session {sessionId}");
             manager.SetOutputHandler(sessionId, WriteOutput);
@@ -191,6 +195,10 @@ public partial class TerminalHostControl : UserControl
             {
                 Logger.Log("TerminalHostControl: calling terminalReset()");
                 await WebView.CoreWebView2.ExecuteScriptAsync("terminalReset()");
+
+                var fontSize = AppSettings.LoadFontSize();
+                if (fontSize != 11)
+                    await WebView.CoreWebView2.ExecuteScriptAsync($"setFontSize({fontSize})");
 
                 var buffered = manager.GetBufferedOutput(sessionId);
                 Logger.Log($"TerminalHostControl: buffered output size={buffered.Length}");
@@ -211,6 +219,12 @@ public partial class TerminalHostControl : UserControl
         }
 
         FocusTerminal();
+    }
+
+    public async void ApplyFontSize(int size)
+    {
+        if (!_webViewReady) return;
+        await WebView.CoreWebView2.ExecuteScriptAsync($"setFontSize({size})");
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
