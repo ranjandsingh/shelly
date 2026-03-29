@@ -85,8 +85,14 @@
                 MouseEnter="ExpandedPanel_MouseEnter"
                 MouseLeave="ExpandedPanel_MouseLeave"
                 PreviewMouseDown="ExpandedPanel_MouseDown">
+            <Border.CacheMode>
+                <BitmapCache EnableClearType="False" RenderAtScale="1"/>
+            </Border.CacheMode>
             <Border.RenderTransform>
-                <TranslateTransform x:Name="ExpandedPanelTranslate" Y="0"/>
+                <TransformGroup>
+                    <ScaleTransform x:Name="ExpandedPanelScale" ScaleX="1" ScaleY="1"/>
+                    <TranslateTransform x:Name="ExpandedPanelTranslate" Y="0"/>
+                </TransformGroup>
             </Border.RenderTransform>
             <Grid>
                 <Grid.RowDefinitions>
