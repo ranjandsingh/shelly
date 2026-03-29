@@ -71,9 +71,14 @@ public class TerminalManager
         // Auto-cd and launch claude if CLAUDE.md exists
         if (projectPath != null)
         {
+            var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
+            var skipClaude = session?.SkipAutoLaunch == true;
+            if (skipClaude)
+                session!.SkipAutoLaunch = false; // one-time flag
+
             var claudeMdPath = Path.Combine(projectPath, "CLAUDE.md");
-            var hasClaude = File.Exists(claudeMdPath);
-            Logger.Log($"TerminalManager: projectPath={projectPath}, hasClaude={hasClaude}");
+            var hasClaude = !skipClaude && File.Exists(claudeMdPath);
+            Logger.Log($"TerminalManager: projectPath={projectPath}, hasClaude={hasClaude}, skipClaude={skipClaude}");
 
             var shellName = Path.GetFileNameWithoutExtension(ConPtyTerminal.DefaultShell).ToLower();
             var cdCommand = shellName switch

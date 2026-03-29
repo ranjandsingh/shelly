@@ -56,6 +56,9 @@ public class TerminalSession : INotifyPropertyChanged
         set { _isActive = value; OnPropertyChanged(); }
     }
 
+    /// <summary>When true, the terminal will cd into the project but skip auto-launching claude.</summary>
+    public bool SkipAutoLaunch { get; set; }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? name = null)

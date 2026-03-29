@@ -133,11 +133,32 @@ public partial class FloatingPanel : Window
         PlayLaunchGreeting();
     }
 
+    private static readonly string[] Greetings =
+    [
+        "Hello!",
+        "Hey!",
+        "Namaste!",
+        "Hola!",
+        "Bonjour!",
+        "Ciao!",
+        "Hallo!",
+        "Olá!",
+        "Ahoj!",
+        "Salut!",
+        "Hej!",
+        "Aloha!",
+        "Salam!",
+        "Sawubona!",
+        "Merhaba!",
+    ];
+
     private void PlayLaunchGreeting()
     {
         _greetingActive = true;
 
-        // Show mascot icon with "Hello!" text
+        CollapsedGreeting.Text = Greetings[Random.Shared.Next(Greetings.Length)];
+
+        // Show mascot icon with greeting text
         CollapsedIcon.Width = 28;
         CollapsedIcon.Height = 28;
         CollapsedBar.CornerRadius = new CornerRadius(16);

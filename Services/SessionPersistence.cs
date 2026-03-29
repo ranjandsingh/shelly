@@ -11,51 +11,86 @@ public static class SessionPersistence
 
     public static void Save()
     {
-        var data = SessionStore.Instance.Sessions
-            .Where(s => s.ProjectPath != null)
-            .Select(s => new SessionData
-            {
-                ProjectName = s.ProjectName,
-                ProjectPath = s.ProjectPath!,
-                WorkingDirectory = s.WorkingDirectory
-            })
-            .ToList();
+        var store = SessionStore.Instance;
+        var activeIndex = store.ActiveSession != null
+            ? store.Sessions.IndexOf(store.ActiveSession)
+            : 0;
+
+        var state = new SavedState
+        {
+            ActiveIndex = activeIndex,
+            Sessions = store.Sessions
+                .Select(s => new SessionData
+                {
+                    ProjectName = s.ProjectName,
+                    ProjectPath = s.ProjectPath,
+                    WorkingDirectory = s.WorkingDirectory
+                })
+                .ToList()
+        };
 
         var dir = Path.GetDirectoryName(FilePath)!;
         Directory.CreateDirectory(dir);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(data));
+        File.WriteAllText(FilePath, JsonSerializer.Serialize(state));
     }
 
-    public static void Load()
+    /// <summary>
+    /// Loads saved sessions into the SessionStore, replacing any existing sessions.
+    /// Returns true if sessions were restored.
+    /// </summary>
+    public static bool Load()
     {
-        if (!File.Exists(FilePath)) return;
+        if (!File.Exists(FilePath)) return false;
 
         try
         {
             var json = File.ReadAllText(FilePath);
-            var data = JsonSerializer.Deserialize<List<SessionData>>(json);
-            if (data == null) return;
+            var state = JsonSerializer.Deserialize<SavedState>(json);
+            if (state?.Sessions == null || state.Sessions.Count == 0) return false;
 
-            foreach (var entry in data)
+            var store = SessionStore.Instance;
+            var activeIndex = state.ActiveIndex >= 0 && state.ActiveIndex < state.Sessions.Count
+                ? state.ActiveIndex
+                : 0;
+
+            for (int i = 0; i < state.Sessions.Count; i++)
             {
-                // Don't duplicate sessions that already exist (e.g., the default one)
-                var exists = SessionStore.Instance.Sessions
-                    .Any(s => string.Equals(s.ProjectPath, entry.ProjectPath, StringComparison.OrdinalIgnoreCase));
+                var entry = state.Sessions[i];
+                var session = store.AddSession(entry.ProjectName, entry.ProjectPath, entry.WorkingDirectory);
 
-                if (!exists)
-                    SessionStore.Instance.AddSession(entry.ProjectName, entry.ProjectPath, entry.WorkingDirectory);
+                // Only the active session should auto-launch claude on first attach
+                if (i != activeIndex)
+                    session.SkipAutoLaunch = true;
             }
+
+            // Restore active session
+            store.SelectSession(store.Sessions[activeIndex].Id);
+
+            return true;
         }
         catch
         {
             // Corrupted file — ignore and start fresh
+            return false;
         }
+    }
+
+    public static void Delete()
+    {
+        if (File.Exists(FilePath))
+            File.Delete(FilePath);
+    }
+
+    private class SavedState
+    {
+        public int ActiveIndex { get; set; }
+        public List<SessionData> Sessions { get; set; } = new();
     }
 
     private class SessionData
     {
         public string ProjectName { get; set; } = "";
-        public string ProjectPath { get; set; } = "";
+        public string? ProjectPath { get; set; }
         public string WorkingDirectory { get; set; } = "";
     }
 }
