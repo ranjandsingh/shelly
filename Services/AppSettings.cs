@@ -14,6 +14,9 @@ public static class AppSettings
         public uint? HotkeyModifiers { get; set; }
         public uint? HotkeyVk { get; set; }
         public bool RememberSessions { get; set; } = true;
+        public bool AutoCheckUpdates { get; set; } = true;
+        public string? LastUpdateCheck { get; set; }
+        public string? DismissedUpdateVersion { get; set; }
     }
 
     private static Data LoadData()
@@ -64,6 +67,38 @@ public static class AppSettings
     {
         var data = LoadData();
         data.RememberSessions = value;
+        SaveData(data);
+    }
+
+    public static bool LoadAutoCheckUpdates() => LoadData().AutoCheckUpdates;
+
+    public static void SaveAutoCheckUpdates(bool value)
+    {
+        var data = LoadData();
+        data.AutoCheckUpdates = value;
+        SaveData(data);
+    }
+
+    public static DateTime? LoadLastUpdateCheck()
+    {
+        var raw = LoadData().LastUpdateCheck;
+        return raw != null && DateTime.TryParse(raw, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
+            ? dt : null;
+    }
+
+    public static void SaveLastUpdateCheck(DateTime value)
+    {
+        var data = LoadData();
+        data.LastUpdateCheck = value.ToUniversalTime().ToString("o");
+        SaveData(data);
+    }
+
+    public static string? LoadDismissedUpdateVersion() => LoadData().DismissedUpdateVersion;
+
+    public static void SaveDismissedUpdateVersion(string? version)
+    {
+        var data = LoadData();
+        data.DismissedUpdateVersion = version;
         SaveData(data);
     }
 }
