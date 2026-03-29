@@ -4,6 +4,8 @@
 
 <p align="center">
   A floating terminal for Windows that launches Claude Code, tracks its status, and auto-detects your IDE projects.
+  <br><br>
+  Inspired by <a href="https://github.com/adamlyttleapps/notchy">Notchy</a> for macOS.
 </p>
 
 ---
@@ -47,10 +49,6 @@ Requires the [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8
 - [Hardcodet.NotifyIcon.Wpf](https://github.com/hardcodet/wpf-notifyicon) — system tray icon
 - [Microsoft.Web.WebView2](https://www.nuget.org/packages/Microsoft.Web.WebView2) — embedded Chromium for terminal rendering
 - [xterm.js](https://xtermjs.org/) — terminal emulator frontend (bundled)
-
-## Inspiration
-
-Inspired by [Notchy](https://github.com/adamlyttleapps/notchy).
 
 ## License
 
