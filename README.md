@@ -14,7 +14,6 @@
 - **Floating panel** — a minimal, always-on-top terminal that launches Claude Code, toggled with <kbd>Ctrl+`</kbd>
 - **Multi-session tabs** — run multiple terminal sessions side by side, each in its own directory
 - **Claude Code status tracking** — detects Claude Code's state (working, waiting for input, task completed) and shows it as animated indicators in the collapsed bar
-- **Git checkpoints** — `Ctrl+S` to snapshot your project before making changes, stored as lightweight git refs
 - **Sound notifications** — audible alerts when a task finishes or needs your input
 - **Drag & drop** — drop a folder onto the panel to start a new session there
 - **Shell selection** — choose between Bash, CMD, PowerShell 7, or Windows PowerShell

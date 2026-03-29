@@ -572,7 +572,7 @@ public partial class FloatingPanel : Window
         {
             switch (e.Key)
             {
-                case Key.S: _ = CreateCheckpointAsync(); e.Handled = true; break;
+                // Ctrl+S checkpoint disabled — Claude Code has built-in checkpoints
                 case Key.T: SessionStore.Instance.AddSession(); e.Handled = true; break;
                 case Key.W:
                     var activeId = SessionStore.Instance.ActiveSessionId;
@@ -584,18 +584,7 @@ public partial class FloatingPanel : Window
         }
     }
 
-    private async Task CreateCheckpointAsync()
-    {
-        var session = SessionStore.Instance.ActiveSession;
-        if (session?.ProjectPath == null) return;
-        var success = await CheckpointManager.CreateCheckpoint(session.ProjectPath, session.ProjectName);
-        if (success)
-        {
-            Title = "Shelly — Checkpoint Saved";
-            await Task.Delay(2000);
-            Title = "Shelly";
-        }
-    }
+
 
     protected override void OnDrop(DragEventArgs e)
     {

@@ -16,7 +16,6 @@ public partial class SessionTabBar : UserControl
         "Drop a folder to open it",
         "Right-click tab to rename",
         "Pin to keep panel open",
-        "Ctrl+S saves a git snapshot",
         "Ctrl+T opens a new session",
         "Ctrl+W closes current tab",
         "Drag the top bar to move",
