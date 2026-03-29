@@ -40,38 +40,58 @@
                            VerticalAlignment="Center" Margin="0,0,0,0"
                            Visibility="Collapsed"/>
 
-                <!-- Status dot (idle/default) — hidden when idle -->
-                <Ellipse x:Name="CollapsedStatusDot" Width="8" Height="8"
-                         Fill="#FF4CAF50" Visibility="Collapsed"/>
+                <!-- Working group: spinner + count -->
+                <StackPanel x:Name="WorkingGroup" Orientation="Horizontal"
+                            Visibility="Collapsed" Margin="1,0">
+                    <Canvas Width="14" Height="14" RenderTransformOrigin="0.5,0.5"
+                            VerticalAlignment="Center">
+                        <Canvas.RenderTransform>
+                            <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
+                        </Canvas.RenderTransform>
+                        <Path Data="M7,2 A5,5 0 1 1 2,7" Stroke="#FFFFA726"
+                              StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Canvas>
+                    <TextBlock x:Name="WorkingCount" Foreground="#FFFFA726" FontSize="10"
+                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,0,0"
+                               Visibility="Collapsed"/>
+                </StackPanel>
 
-                <!-- Spinner (working) — spinning arc -->
-                <Canvas x:Name="CollapsedSpinner" Width="14" Height="14"
-                        Visibility="Collapsed"
-                        RenderTransformOrigin="0.5,0.5">
-                    <Canvas.RenderTransform>
-                        <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
-                    </Canvas.RenderTransform>
-                    <Path Data="M7,2 A5,5 0 1 1 2,7" Stroke="#FFFFA726"
-                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                </Canvas>
+                <!-- WaitingForInput group: triangle + count -->
+                <StackPanel x:Name="WaitingGroup" Orientation="Horizontal"
+                            Visibility="Collapsed" Margin="1,0">
+                    <Canvas Width="14" Height="14" RenderTransformOrigin="0.5,0.5"
+                            VerticalAlignment="Center">
+                        <Canvas.RenderTransform>
+                            <ScaleTransform x:Name="AlertPulse" ScaleX="1" ScaleY="1"/>
+                        </Canvas.RenderTransform>
+                        <Path Data="M7,3 L11.5,11 L2.5,11 Z" Fill="#FFFFA726"/>
+                    </Canvas>
+                    <TextBlock x:Name="WaitingCount" Foreground="#FFFFA726" FontSize="10"
+                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,0,0"
+                               Visibility="Collapsed"/>
+                </StackPanel>
 
-                <!-- Alert triangle (waiting for input) — pulsing yellow -->
-                <Canvas x:Name="CollapsedAlertDot" Width="14" Height="14"
-                        Visibility="Collapsed"
-                        RenderTransformOrigin="0.5,0.5">
-                    <Canvas.RenderTransform>
-                        <ScaleTransform x:Name="AlertPulse" ScaleX="1" ScaleY="1"/>
-                    </Canvas.RenderTransform>
-                    <Path Data="M7,3 L11.5,11 L2.5,11 Z" Fill="#FFFFA726"/>
-                </Canvas>
+                <!-- TaskCompleted group: checkmark + count -->
+                <StackPanel x:Name="CompletedGroup" Orientation="Horizontal"
+                            Visibility="Collapsed" Margin="1,0">
+                    <Canvas Width="14" Height="14" VerticalAlignment="Center">
+                        <Path Data="M3,7 L6,10 L11,4" Stroke="#FF4CAF50"
+                              StrokeThickness="2" StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                    </Canvas>
+                    <TextBlock x:Name="CompletedCount" Foreground="#FF4CAF50" FontSize="10"
+                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,0,0"
+                               Visibility="Collapsed"/>
+                </StackPanel>
 
-                <!-- Checkmark (task completed) -->
-                <Canvas x:Name="CollapsedCheckmark" Width="14" Height="14"
-                        Visibility="Collapsed">
-                    <Path Data="M3,7 L6,10 L11,4" Stroke="#FF4CAF50"
-                          StrokeThickness="2" StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-                </Canvas>
+                <!-- Interrupted group: red dot + count -->
+                <StackPanel x:Name="InterruptedGroup" Orientation="Horizontal"
+                            Visibility="Collapsed" Margin="1,0">
+                    <Ellipse Width="8" Height="8" Fill="#FFEF5350" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="InterruptedCount" Foreground="#FFEF5350" FontSize="10"
+                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,0,0"
+                               Visibility="Collapsed"/>
+                </StackPanel>
 
             </StackPanel>
         </Border>
