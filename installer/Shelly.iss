@@ -52,7 +52,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; \
-  Flags: nowait postinstall skipifsilent
+  Flags: nowait postinstall
 
 [Code]
 function IsWebView2Installed: Boolean;

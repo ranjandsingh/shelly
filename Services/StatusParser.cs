@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using Shelly.Models;
 
@@ -9,22 +10,35 @@ public static class StatusParser
     private static readonly Dictionary<Guid, DateTime> _lastWorkingTime = new();
     private static readonly Dictionary<Guid, System.Timers.Timer> _completionTimers = new();
 
-    // Claude spinner characters — only the decorative ones, NOT middle dot (·) which appears in normal text
-    private static readonly string[] SpinnerPatterns = { "✢", "✳", "✶", "✻", "✽" };
-    // Braille spinner chars from terminal raw output
-    private static readonly char[] BrailleSpinnerChars = { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' };
+    // Completion message: "✻ Cogitated for 4m 2s", "✻ Brewed for 6m 41s", etc.
+    private static readonly Regex CompletionPattern = new(@"[✢✳✶✻✽].*\bfor\b.*\d+[ms]", RegexOptions.Compiled);
 
     /// <summary>Parse raw ConPTY output for fast-path status detection.</summary>
     public static void Parse(Guid sessionId, byte[] data)
     {
         var text = Encoding.UTF8.GetString(data);
 
-        // Fast-path: detect working from raw output
-        if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase) ||
-            text.Contains("Clauding", StringComparison.OrdinalIgnoreCase) ||
-            text.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
+        var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session == null) return;
+
+        // Fast-path: detect completion message ("✻ Cogitated for 4m 2s") immediately
+        if (session.Status == TerminalStatus.Working && CompletionPattern.IsMatch(text))
         {
-            UpdateStatus(sessionId, TerminalStatus.Working);
+            MarkTaskCompleted(sessionId);
+            return;
+        }
+
+        // Fast-path: detect START of working from raw output.
+        // Only transition TO Working from Idle/TaskCompleted — don't override
+        // WaitingForInput or other states (terminal redraws can contain stale indicators).
+        if (session.Status is TerminalStatus.Idle or TerminalStatus.TaskCompleted)
+        {
+            if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("Clauding", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateStatus(sessionId, TerminalStatus.Working);
+            }
         }
     }
 
@@ -34,58 +48,69 @@ public static class StatusParser
         var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session == null) return;
 
-        // Get last ~20 non-blank lines for classification
-        var lines = visibleText.Split('\n')
-            .Select(l => l.TrimEnd())
-            .Where(l => l.Length > 0)
-            .TakeLast(20)
-            .ToArray();
-
-        var relevantText = string.Join("\n", lines);
-        var newStatus = ClassifyVisibleText(relevantText, session.Status);
-
+        var newStatus = ClassifyVisibleText(visibleText, session.Status);
         UpdateStatus(sessionId, newStatus);
     }
 
     private static TerminalStatus ClassifyVisibleText(string text, TerminalStatus current)
     {
-        // Working signals — any of these mean Claude is actively processing
-        if (text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
-        if (text.Contains("Clauding", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
-        if (text.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
-        if (text.Contains("Reading") && text.Contains("file"))
-            return TerminalStatus.Working;
-        if (text.Contains("Writing") && text.Contains("file"))
-            return TerminalStatus.Working;
-        if (text.Contains("ctrl+o to expand", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.Working;
+        var lines = text.Split('\n')
+            .Select(l => l.TrimEnd())
+            .Where(l => l.Length > 0)
+            .ToArray();
 
-        // WaitingForInput: Claude asking for user decision
-        if (text.Contains("Esc to cancel", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
-        if (text.Contains("Do you want to proceed", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
-        if (text.Contains("Yes / No", StringComparison.OrdinalIgnoreCase))
-            return TerminalStatus.WaitingForInput;
+        if (lines.Length == 0) return TerminalStatus.Idle;
 
-        // Claude prompt with option numbers (❯ followed by digit)
-        if (text.Contains("❯"))
-        {
-            var lines = text.Split('\n');
-            foreach (var line in lines.TakeLast(5))
-            {
-                if (line.Contains("❯") && line.Any(char.IsDigit))
-                    return TerminalStatus.WaitingForInput;
-            }
-        }
+        // Bottom 3 lines = status bar area (current state indicator)
+        var bottom3 = string.Join("\n", lines.TakeLast(3));
+        // Bottom 8 lines = multi-line prompts, approval dialogs
+        var bottom8 = string.Join("\n", lines.TakeLast(8));
 
-        // Interrupted
-        if (text.Contains("Interrupted", StringComparison.OrdinalIgnoreCase) &&
-            !text.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
+        // === INTERRUPTED (specific, check early) ===
+        if (bottom8.Contains("Interrupted", StringComparison.OrdinalIgnoreCase) &&
+            !bottom8.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
             return TerminalStatus.Interrupted;
+
+        // === WORKING: only from bottom 3 lines (status bar) ===
+        // Stale "esc to interrupt" higher up is from a previous work phase.
+        if (bottom3.Contains("esc to interrupt", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.Working;
+        if (bottom3.Contains("Clauding", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.Working;
+        if (bottom3.Contains("thinking with", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.Working;
+        if (bottom3.Contains("Reading") && bottom3.Contains("file"))
+            return TerminalStatus.Working;
+        if (bottom3.Contains("Writing") && bottom3.Contains("file"))
+            return TerminalStatus.Working;
+
+        // === COMPLETED: "✻ Cogitated for 4m 2s" etc. ===
+        // Spinner char + "for" + time duration = Claude just finished a task.
+        // Check before WaitingForInput so stale approval text doesn't win.
+        var bottom5 = string.Join("\n", lines.TakeLast(5));
+        if (CompletionPattern.IsMatch(bottom5))
+            return TerminalStatus.Idle;
+
+        // === WAITING FOR INPUT: from bottom 8 lines ===
+        // Edit approval
+        if (bottom8.Contains("Esc to cancel", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
+        if (bottom8.Contains("Do you want to proceed", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
+        if (bottom8.Contains("Yes / No", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
+        // Tool permission prompts: "(Y)es / (N)o"
+        if (bottom8.Contains("(Y)es", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
+        // Plan mode approval menu
+        if (bottom8.Contains("Keep planning", StringComparison.OrdinalIgnoreCase))
+            return TerminalStatus.WaitingForInput;
+        // Selection menu with ❯ and numbered options (plan approval, etc.)
+        foreach (var line in lines.TakeLast(8))
+        {
+            if (line.Contains("❯") && line.Any(char.IsDigit))
+                return TerminalStatus.WaitingForInput;
+        }
 
         return TerminalStatus.Idle;
     }
@@ -132,6 +157,31 @@ public static class StatusParser
                 SoundPlayer.PlayWaitingForInput();
             else if (newStatus == TerminalStatus.TaskCompleted)
                 SoundPlayer.PlayTaskCompleted();
+        });
+    }
+
+    /// <summary>Immediately mark a task as completed (bypasses the 3s delay timer).</summary>
+    private static void MarkTaskCompleted(Guid sessionId)
+    {
+        CancelCompletionTimer(sessionId);
+        var session = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session == null) return;
+
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            session.Status = TerminalStatus.TaskCompleted;
+            SoundPlayer.PlayTaskCompleted();
+
+            var clearTimer = new System.Timers.Timer(3000) { AutoReset = false };
+            clearTimer.Elapsed += (_, _) =>
+            {
+                Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (session.Status == TerminalStatus.TaskCompleted)
+                        session.Status = TerminalStatus.Idle;
+                });
+            };
+            clearTimer.Start();
         });
     }
 
