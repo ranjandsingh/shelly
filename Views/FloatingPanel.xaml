@@ -29,6 +29,17 @@
             </Border.Effect>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                         HorizontalAlignment="Center">
+                <!-- Mascot icon — shown on launch greeting and when status is active -->
+                <Image x:Name="CollapsedIcon" Width="20" Height="20"
+                       Visibility="Collapsed" Margin="0,0,2,0"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                <!-- Greeting text — shown briefly on launch -->
+                <TextBlock x:Name="CollapsedGreeting" Text="Hello!"
+                           Foreground="#FFE0E0E0" FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="0,0,0,0"
+                           Visibility="Collapsed"/>
+
                 <!-- Status dot (idle/default) — hidden when idle -->
                 <Ellipse x:Name="CollapsedStatusDot" Width="8" Height="8"
                          Fill="#FF4CAF50" Visibility="Collapsed"/>

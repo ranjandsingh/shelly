@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>Resources\tray-icon.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\windows\icon.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <!-- Versioning -->
@@ -44,7 +44,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Resources\tray-icon.ico" />
+    <Resource Include="Resources\windows\icon.ico" />
+    <Resource Include="Resources\icon.png" />
+    <Resource Include="Resources\icon-processing.png" />
+    <Resource Include="Resources\icon-waiting.png" />
+    <Resource Include="Resources\icon-success.png" />
   </ItemGroup>
 
 </Project>

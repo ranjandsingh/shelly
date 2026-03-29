@@ -37,12 +37,12 @@
         </Style>
     </UserControl.Resources>
     <DockPanel>
-        <!-- Pin button -->
-        <Button x:Name="PinButton" DockPanel.Dock="Left"
-                Content="&#x1F4CC;" FontSize="11"
-                Style="{StaticResource TabBarIconButton}"
-                Click="PinButton_Click"
-                ToolTip="Pin panel"/>
+        <!-- Mascot icon -->
+        <Image DockPanel.Dock="Left"
+               Source="pack://application:,,,/Resources/icon.png"
+               Width="24" Height="24" Margin="6,0,2,0"
+               VerticalAlignment="Center"
+               RenderOptions.BitmapScalingMode="HighQuality"/>
 
         <!-- Three-dot menu (rightmost) -->
         <Button x:Name="MenuButton" DockPanel.Dock="Right"
@@ -51,7 +51,14 @@
                 Click="MenuButton_Click"
                 ToolTip="Menu"/>
 
-        <!-- Open folder button (next to three-dot menu) -->
+        <!-- Pin button (next to menu) -->
+        <Button x:Name="PinButton" DockPanel.Dock="Right"
+                Content="&#x1F4CC;" FontSize="11"
+                Style="{StaticResource TabBarIconButton}"
+                Click="PinButton_Click"
+                ToolTip="Pin panel"/>
+
+        <!-- Open folder button -->
         <Button DockPanel.Dock="Right"
                 Content="&#x1F4C2;" FontSize="12"
                 Style="{StaticResource TabBarIconButton}"

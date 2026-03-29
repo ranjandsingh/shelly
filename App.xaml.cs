@@ -39,7 +39,7 @@ public partial class App : Application
         _trayIcon = new TaskbarIcon
         {
             IconSource = new System.Windows.Media.Imaging.BitmapImage(
-                new Uri("pack://application:,,,/Resources/tray-icon.ico")),
+                new Uri("pack://application:,,,/Resources/windows/icon.ico")),
             ToolTipText = "Shelly"
         };
 

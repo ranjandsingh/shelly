@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Shelly.Interop;
 using Shelly.Services;
@@ -17,9 +18,33 @@ public partial class FloatingPanel : Window
     private bool _hasInteracted; // true once user clicks on the expanded panel
     private DispatcherTimer? _hoverCollapseTimer;
     private DateTime? _outsideSince; // tracks when cursor first left the window
+    private bool _iconVisible; // tracks whether the mascot icon is currently shown
+    private bool _greetingActive; // prevents UpdateCollapsedBar from hiding during greeting
 
     private const double CollapsedWidth = 48;
+    private const double CollapsedWidthWithIcon = 80;
+    private const double CollapsedWidthGreeting = 116;
     private const double CollapsedHeight = 18;
+    private const double CollapsedHeightWithIcon = 32;
+    private const double CollapsedHeightGreeting = 40;
+
+    // Mascot icon images for each status
+    private static readonly BitmapImage IconIdle = LoadIcon("Resources/icon.png");
+    private static readonly BitmapImage IconProcessing = LoadIcon("Resources/icon-processing.png");
+    private static readonly BitmapImage IconWaiting = LoadIcon("Resources/icon-waiting.png");
+    private static readonly BitmapImage IconSuccess = LoadIcon("Resources/icon-success.png");
+
+    private static BitmapImage LoadIcon(string path)
+    {
+        var img = new BitmapImage();
+        img.BeginInit();
+        img.UriSource = new Uri($"pack://application:,,,/{path}");
+        img.DecodePixelWidth = 40; // 2x for crisp rendering at 20px
+        img.CacheOption = BitmapCacheOption.OnLoad;
+        img.EndInit();
+        img.Freeze();
+        return img;
+    }
     private const double ExpandedWidth = 720;
     private const double ExpandedHeight = 400;
 
@@ -103,6 +128,78 @@ public partial class FloatingPanel : Window
         Logger.Log($"FloatingPanel: activeSessionId={activeId}");
         if (activeId.HasValue)
             TerminalHost.AttachSession(activeId.Value);
+
+        // Launch greeting: briefly show the mascot icon, then fade it away
+        PlayLaunchGreeting();
+    }
+
+    private void PlayLaunchGreeting()
+    {
+        _greetingActive = true;
+
+        // Show mascot icon with "Hello!" text
+        CollapsedIcon.Width = 28;
+        CollapsedIcon.Height = 28;
+        CollapsedBar.CornerRadius = new CornerRadius(16);
+        CollapsedIcon.Source = IconIdle;
+        CollapsedIcon.Opacity = 0;
+        CollapsedIcon.Visibility = Visibility.Visible;
+        CollapsedGreeting.Opacity = 0;
+        CollapsedGreeting.Visibility = Visibility.Visible;
+        _iconVisible = true;
+
+        Width = CollapsedWidthGreeting;
+        Height = CollapsedHeightGreeting;
+        PositionCenter();
+
+        // Fade in icon and text
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        fadeIn.Completed += (_, _) => { CollapsedIcon.Opacity = 1; CollapsedGreeting.Opacity = 1; };
+        CollapsedIcon.BeginAnimation(OpacityProperty, fadeIn);
+        CollapsedGreeting.BeginAnimation(OpacityProperty, fadeIn);
+
+        // Hold for 3 seconds, then fade out and collapse
+        Task.Delay(3000).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
+        {
+            _greetingActive = false;
+
+            // Fade out everything together, then collapse to pill
+            var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+                FillBehavior = FillBehavior.Stop
+            };
+            fadeOut.Completed += (_, _) =>
+            {
+                CollapsedIcon.Opacity = 1;
+                CollapsedIcon.Visibility = Visibility.Collapsed;
+                CollapsedIcon.Width = 20;
+                CollapsedIcon.Height = 20;
+                CollapsedGreeting.Opacity = 1;
+                CollapsedGreeting.Visibility = Visibility.Collapsed;
+                CollapsedBar.CornerRadius = new CornerRadius(8);
+                _iconVisible = false;
+
+                // Check if a status is active — if so, let UpdateCollapsedBar handle the icon
+                var anyActive = SessionStore.Instance.Sessions.Any(s => s.Status != Models.TerminalStatus.Idle);
+                if (anyActive)
+                {
+                    UpdateCollapsedBar();
+                }
+                else
+                {
+                    Width = CollapsedWidth;
+                    Height = CollapsedHeight;
+                    PositionCenter();
+                }
+            };
+            CollapsedIcon.BeginAnimation(OpacityProperty, fadeOut);
+            CollapsedGreeting.BeginAnimation(OpacityProperty, fadeOut);
+        }));
     }
 
     private void OnActiveSessionChanged(Guid sessionId)
@@ -185,8 +282,8 @@ public partial class FloatingPanel : Window
             ExpandedPanelTranslate.Y = 0;
             ExpandedPanel.Visibility = Visibility.Collapsed;
             CollapsedBar.Visibility = Visibility.Visible;
-            Width = CollapsedWidth;
-            Height = CollapsedHeight;
+            Width = _iconVisible ? CollapsedWidthWithIcon : CollapsedWidth;
+            Height = _iconVisible ? CollapsedHeightWithIcon : CollapsedHeight;
             ResizeMode = ResizeMode.NoResize;
             PositionCenter();
 
@@ -265,27 +362,85 @@ public partial class FloatingPanel : Window
             CollapsedCheckmark.Visibility = Visibility.Collapsed;
             StopAnimations();
 
-            // Only show indicators when something is actively happening (not Idle)
+            // Show mascot icon + status indicator side by side
             switch (overallStatus)
             {
                 case Models.TerminalStatus.Working:
+                    ShowCollapsedIcon(IconProcessing);
                     CollapsedSpinner.Visibility = Visibility.Visible;
                     StartSpinnerAnimation();
                     break;
                 case Models.TerminalStatus.WaitingForInput:
+                    ShowCollapsedIcon(IconWaiting);
                     CollapsedAlertDot.Visibility = Visibility.Visible;
                     StartPulseAnimation();
                     break;
                 case Models.TerminalStatus.TaskCompleted:
+                    ShowCollapsedIcon(IconSuccess);
                     CollapsedCheckmark.Visibility = Visibility.Visible;
                     break;
                 case Models.TerminalStatus.Interrupted:
+                    ShowCollapsedIcon(IconIdle);
                     CollapsedStatusDot.Visibility = Visibility.Visible;
                     CollapsedStatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xEF, 0x53, 0x50));
                     break;
-                // Idle: no indicator shown — just the transparent pill
+                case Models.TerminalStatus.Idle:
+                    if (!_greetingActive)
+                        HideCollapsedIcon();
+                    break;
             }
         });
+    }
+
+    private void ShowCollapsedIcon(BitmapImage icon)
+    {
+        CollapsedIcon.Source = icon;
+        if (!_iconVisible)
+        {
+            _iconVisible = true;
+            CollapsedIcon.Opacity = 0;
+            CollapsedIcon.Visibility = Visibility.Visible;
+
+            if (!_isExpanded)
+            {
+                Width = CollapsedWidthWithIcon;
+                Height = CollapsedHeightWithIcon;
+                PositionCenter();
+            }
+
+            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                FillBehavior = FillBehavior.Stop
+            };
+            fadeIn.Completed += (_, _) => CollapsedIcon.Opacity = 1;
+            CollapsedIcon.BeginAnimation(OpacityProperty, fadeIn);
+        }
+    }
+
+    private void HideCollapsedIcon()
+    {
+        if (!_iconVisible) return;
+
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(250))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+            FillBehavior = FillBehavior.Stop
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            CollapsedIcon.Opacity = 1;
+            CollapsedIcon.Visibility = Visibility.Collapsed;
+            _iconVisible = false;
+
+            if (!_isExpanded)
+            {
+                Width = CollapsedWidth;
+                Height = CollapsedHeight;
+                PositionCenter();
+            }
+        };
+        CollapsedIcon.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     // --- UI event handlers ---
