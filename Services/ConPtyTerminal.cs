@@ -146,8 +146,11 @@ public class ConPtyTerminal : IDisposable
     {
         var shells = new List<(string, string)>();
 
-        var bash = WhichOnPath("bash.exe");
-        if (bash != null) shells.Add(("Bash", bash));
+        var gitBash = FindGitBash();
+        if (gitBash != null) shells.Add(("Git Bash", gitBash));
+
+        var wslBash = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "bash.exe");
+        if (File.Exists(wslBash)) shells.Add(("WSL", wslBash));
 
         var cmd = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
         if (File.Exists(cmd)) shells.Add(("Command Prompt (cmd)", cmd));
@@ -164,9 +167,9 @@ public class ConPtyTerminal : IDisposable
 
     private static string DetectBestShell()
     {
-        // Prefer bash, then cmd, powershell last
-        var bash = WhichOnPath("bash.exe");
-        if (bash != null) return bash;
+        // Prefer Git Bash, then cmd, powershell last
+        var gitBash = FindGitBash();
+        if (gitBash != null) return gitBash;
 
         var cmd = Environment.GetEnvironmentVariable("COMSPEC") ?? @"C:\Windows\System32\cmd.exe";
         if (File.Exists(cmd)) return cmd;
@@ -179,6 +182,45 @@ public class ConPtyTerminal : IDisposable
         if (File.Exists(winPs)) return winPs;
 
         return cmd;
+    }
+
+    private static string? FindGitBash()
+    {
+        // Check known install locations
+        string[] candidates =
+        [
+            @"C:\Program Files\Git\bin\bash.exe",
+            @"C:\Program Files (x86)\Git\bin\bash.exe",
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs", "Git", "bin", "bash.exe")
+        ];
+        foreach (var candidate in candidates)
+            if (File.Exists(candidate)) return candidate;
+
+        // Check registry for Git install path
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\GitForWindows");
+            if (key?.GetValue("InstallPath") is string installPath)
+            {
+                var regBash = Path.Combine(installPath, "bin", "bash.exe");
+                if (File.Exists(regBash)) return regBash;
+            }
+        }
+        catch { /* registry access may fail */ }
+
+        // Fall back to PATH lookup, but exclude System32 (that's WSL bash)
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (path == null) return null;
+        var system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        foreach (var dir in path.Split(';'))
+        {
+            var trimmed = dir.Trim();
+            if (trimmed.Equals(system32, StringComparison.OrdinalIgnoreCase)) continue;
+            var full = Path.Combine(trimmed, "bash.exe");
+            if (File.Exists(full)) return full;
+        }
+        return null;
     }
 
     private static string? WhichOnPath(string exe)

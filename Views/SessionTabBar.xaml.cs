@@ -41,15 +41,19 @@ public partial class SessionTabBar : UserControl
 
         _hintIndex = Random.Shared.Next(Hints.Length);
 
-        _hintTimer = new System.Windows.Threading.DispatcherTimer();
+        _hintTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(12)
+        };
         _hintTimer.Tick += HintTimer_Tick;
-
         if (AppSettings.LoadShowHints())
         {
-            // Start in "showing" phase
+            // Show first hint immediately (no fade — avoids layout flicker)
+            HintText.Text = $"Tip: {Hints[_hintIndex]}";
+            HintText.Opacity = 1;
+            HintText.Visibility = Visibility.Visible;
             _hintVisible = true;
             _hintTimer.Interval = TimeSpan.FromSeconds(HintShowSeconds);
-            ShowHintNow();
             _hintTimer.Start();
         }
         else
@@ -86,8 +90,9 @@ public partial class SessionTabBar : UserControl
     private void ShowHintNow()
     {
         HintText.Text = $"Tip: {Hints[_hintIndex]}";
-        HintText.Visibility = Visibility.Visible;
+        HintText.BeginAnimation(OpacityProperty, null);
         HintText.Opacity = 0;
+        HintText.Visibility = Visibility.Visible;
         var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
         HintText.BeginAnimation(OpacityProperty, fadeIn);
     }
@@ -95,15 +100,19 @@ public partial class SessionTabBar : UserControl
     private void FadeOutHint(Action? onComplete = null)
     {
         var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
-        fadeOut.Completed += (_, _) => onComplete?.Invoke();
+        fadeOut.Completed += (_, _) =>
+        {
+            HintText.BeginAnimation(OpacityProperty, null);
+            HintText.Opacity = 0;
+            onComplete?.Invoke();
+        };
         HintText.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     private void HintText_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Hide hint if squeezed too narrow to be readable
-        if (HintText.ActualWidth < 60)
-            HintText.Visibility = Visibility.Collapsed;
+        // No-op: visibility is managed by UpdateScrollButtons (_tabsOverflow)
+        // and HintTimer_Tick. Changing Visibility here causes layout oscillation.
     }
 
     private void Tab_Click(object sender, MouseButtonEventArgs e)
