@@ -27,8 +27,12 @@ public partial class SessionTabBar : UserControl
 
     private int _hintIndex;
     private System.Windows.Threading.DispatcherTimer? _hintTimer;
+    private bool _hintVisible; // current phase: true = showing, false = hidden gap
+    private bool _tabsOverflow; // true when tabs need scrolling
 
     private const double ScrollStep = 120;
+    private const double HintShowSeconds = 5;
+    private const double HintHideSeconds = 10;
 
     public SessionTabBar()
     {
@@ -36,39 +40,63 @@ public partial class SessionTabBar : UserControl
         DataContext = SessionStore.Instance;
 
         _hintIndex = Random.Shared.Next(Hints.Length);
-        UpdateHintVisibility();
 
-        _hintTimer = new System.Windows.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(12)
-        };
-        _hintTimer.Tick += (_, _) =>
-        {
-            _hintIndex = (_hintIndex + 1) % Hints.Length;
-            var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
-            fadeOut.Completed += (_, _) =>
-            {
-                HintText.Text = $"Tip: {Hints[_hintIndex]}";
-                var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
-                HintText.BeginAnimation(OpacityProperty, fadeIn);
-            };
-            HintText.BeginAnimation(OpacityProperty, fadeOut);
-        };
+        _hintTimer = new System.Windows.Threading.DispatcherTimer();
+        _hintTimer.Tick += HintTimer_Tick;
+
         if (AppSettings.LoadShowHints())
+        {
+            // Start in "showing" phase
+            _hintVisible = true;
+            _hintTimer.Interval = TimeSpan.FromSeconds(HintShowSeconds);
+            ShowHintNow();
             _hintTimer.Start();
+        }
+        else
+        {
+            HintText.Visibility = Visibility.Collapsed;
+        }
 
         SizeChanged += (_, _) => UpdateScrollButtons();
     }
 
-    private void UpdateHintVisibility()
+    private void HintTimer_Tick(object? sender, EventArgs e)
     {
-        if (!AppSettings.LoadShowHints())
+        if (_hintVisible)
         {
-            HintText.Visibility = Visibility.Collapsed;
-            return;
+            // Was showing → fade out and enter hidden gap
+            FadeOutHint(() =>
+            {
+                HintText.Visibility = Visibility.Collapsed;
+                _hintVisible = false;
+                _hintIndex = (_hintIndex + 1) % Hints.Length;
+                _hintTimer!.Interval = TimeSpan.FromSeconds(HintHideSeconds);
+            });
         }
+        else
+        {
+            // Was hidden → show next hint (if tabs aren't overflowing)
+            _hintVisible = true;
+            _hintTimer!.Interval = TimeSpan.FromSeconds(HintShowSeconds);
+            if (!_tabsOverflow)
+                ShowHintNow();
+        }
+    }
+
+    private void ShowHintNow()
+    {
         HintText.Text = $"Tip: {Hints[_hintIndex]}";
         HintText.Visibility = Visibility.Visible;
+        HintText.Opacity = 0;
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
+        HintText.BeginAnimation(OpacityProperty, fadeIn);
+    }
+
+    private void FadeOutHint(Action? onComplete = null)
+    {
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200));
+        fadeOut.Completed += (_, _) => onComplete?.Invoke();
+        HintText.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     private void HintText_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -227,8 +255,18 @@ public partial class SessionTabBar : UserControl
         {
             var enabled = !AppSettings.LoadShowHints();
             AppSettings.SaveShowHints(enabled);
-            if (enabled) { UpdateHintVisibility(); _hintTimer?.Start(); }
-            else { HintText.Visibility = Visibility.Collapsed; _hintTimer?.Stop(); }
+            if (enabled)
+            {
+                _hintVisible = true;
+                _hintTimer!.Interval = TimeSpan.FromSeconds(HintShowSeconds);
+                if (!_tabsOverflow) ShowHintNow();
+                _hintTimer.Start();
+            }
+            else
+            {
+                _hintTimer?.Stop();
+                FadeOutHint(() => HintText.Visibility = Visibility.Collapsed);
+            }
         };
         settingsMenu.Items.Add(showHintsItem);
 
@@ -354,6 +392,23 @@ public partial class SessionTabBar : UserControl
             ? Visibility.Visible : Visibility.Collapsed;
         ScrollRightBtn.Visibility = canScroll && TabScrollViewer.HorizontalOffset < TabScrollViewer.ScrollableWidth
             ? Visibility.Visible : Visibility.Collapsed;
+
+        // Tabs overflow → always hide hint; tabs fit → show if in visible phase
+        var wasOverflow = _tabsOverflow;
+        _tabsOverflow = canScroll;
+
+        if (!AppSettings.LoadShowHints()) return;
+
+        if (_tabsOverflow && HintText.Visibility == Visibility.Visible)
+        {
+            // Immediately fade out — tabs need the space
+            FadeOutHint(() => HintText.Visibility = Visibility.Collapsed);
+        }
+        else if (!_tabsOverflow && wasOverflow && _hintVisible)
+        {
+            // Tabs stopped overflowing and we're in the show phase — bring hint back
+            ShowHintNow();
+        }
     }
 
     private void ShowKeybindingDialog()

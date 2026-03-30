@@ -27,15 +27,20 @@ public class HotkeyManager
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
 
-        // Default: Ctrl+`
-        NativeMethods.RegisterHotKey(_hwnd, DEFAULT_HOTKEY_ID,
-            NativeMethods.MOD_CONTROL | NativeMethods.MOD_NOREPEAT,
-            NativeMethods.VK_OEM_3);
-
-        // Load and register saved custom hotkey
+        // Load saved custom hotkey (if any)
         var (mod, vk) = Services.AppSettings.LoadHotkey();
         if (mod.HasValue && vk.HasValue)
+        {
+            // Register only the custom hotkey — skip the default Ctrl+`
             SetCustomHotkey(mod.Value, vk.Value);
+        }
+        else
+        {
+            // Default: Ctrl+`
+            NativeMethods.RegisterHotKey(_hwnd, DEFAULT_HOTKEY_ID,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_NOREPEAT,
+                NativeMethods.VK_OEM_3);
+        }
     }
 
     public void SetCustomHotkey(uint modifiers, uint vk)
@@ -43,6 +48,9 @@ public class HotkeyManager
         // Unregister previous custom hotkey if any
         if (CustomVk.HasValue)
             NativeMethods.UnregisterHotKey(_hwnd, CUSTOM_HOTKEY_ID);
+
+        // Remove the default Ctrl+` so only the custom hotkey is active
+        NativeMethods.UnregisterHotKey(_hwnd, DEFAULT_HOTKEY_ID);
 
         CustomModifiers = modifiers;
         CustomVk = vk;
@@ -61,6 +69,11 @@ public class HotkeyManager
             CustomModifiers = null;
             CustomVk = null;
             Services.AppSettings.ClearHotkey();
+
+            // Restore the default Ctrl+` hotkey
+            NativeMethods.RegisterHotKey(_hwnd, DEFAULT_HOTKEY_ID,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_NOREPEAT,
+                NativeMethods.VK_OEM_3);
         }
     }
 

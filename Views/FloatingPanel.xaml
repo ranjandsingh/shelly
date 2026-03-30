@@ -118,14 +118,14 @@
             </Border.RenderTransform>
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="6"/>
+                    <RowDefinition Height="8"/>
                     <RowDefinition Height="40" MinHeight="40"/>
                     <RowDefinition Height="1"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
                 <!-- Thin drag strip at top -->
-                <Border Grid.Row="0" Background="#FF1E1E1E" Cursor="SizeAll"
+                <Border Grid.Row="0" Background="#FF1E1E1E" CornerRadius="7,7,0,0" Cursor="SizeAll"
                         MouseLeftButtonDown="DragBar_MouseLeftButtonDown"/>
 
                 <!-- Tab bar -->
