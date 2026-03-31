@@ -12,11 +12,6 @@ on:
           - patch
           - minor
           - major
-      source_branch:
-        description: 'Source branch'
-        required: false
-        default: 'dev'
-        type: string
 
 permissions:
   contents: write
@@ -29,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_branch }}
+          ref: dev
           fetch-depth: 0
 
       - name: Calculate next version
@@ -58,7 +53,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           gh pr create \
             --base main \
-            --head "${{ inputs.source_branch }}" \
+            --head "dev" \
             --title "Release v${VERSION}" \
             --body "## Release v${VERSION}
 
