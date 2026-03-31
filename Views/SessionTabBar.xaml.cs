@@ -311,28 +311,7 @@ public partial class SessionTabBar : UserControl
 
         // --- App ---
         var updateItem = new MenuItem { Header = "Check for updates" };
-        updateItem.Click += async (_, _) =>
-        {
-            var info = await UpdateChecker.CheckForUpdateAsync(force: true);
-            if (info != null)
-            {
-                var result = System.Windows.MessageBox.Show(
-                    $"Shelly {info.TagName} is available.\nYou're on v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)}.\n\nInstall now?",
-                    "Update Available",
-                    System.Windows.MessageBoxButton.YesNo,
-                    System.Windows.MessageBoxImage.Information);
-                if (result == System.Windows.MessageBoxResult.Yes)
-                    await UpdateChecker.ApplyUpdateAsync(info);
-            }
-            else
-            {
-                System.Windows.MessageBox.Show(
-                    "You're on the latest version.",
-                    "No Updates",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Information);
-            }
-        };
+        updateItem.Click += (_, _) => RunUpdateFlowInMenu(updateItem);
         menu.Items.Add(updateItem);
 
         var quitItem = new MenuItem { Header = "Quit Shelly" };
@@ -526,6 +505,150 @@ public partial class SessionTabBar : UserControl
             }, System.Windows.Threading.DispatcherPriority.Background);
         };
 
+        dialog.ShowDialog();
+    }
+
+    /// <summary>Update flow inline in the menu: check → download → install popup only when ready.</summary>
+    private async void RunUpdateFlowInMenu(MenuItem menuItem)
+    {
+        var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
+
+        menuItem.IsEnabled = false;
+        menuItem.Header = "Checking for updates...";
+
+        var info = await Task.Run(() => UpdateChecker.CheckForUpdateAsync(force: true));
+
+        if (info == null)
+        {
+            menuItem.Header = $"Up to date (v{currentVersion})";
+            await Task.Delay(2000);
+            menuItem.Header = "Check for updates";
+            menuItem.IsEnabled = true;
+            return;
+        }
+
+        menuItem.Header = $"Downloading {info.TagName}...";
+
+        // Poll until download finishes
+        while (UpdateChecker.DownloadState == UpdateDownloadState.Downloading ||
+               UpdateChecker.DownloadState == UpdateDownloadState.None)
+        {
+            await Task.Delay(300);
+        }
+
+        if (UpdateChecker.DownloadState != UpdateDownloadState.Ready)
+        {
+            menuItem.Header = "Download failed — opening release page...";
+            await Task.Delay(1500);
+            menuItem.Header = "Check for updates";
+            menuItem.IsEnabled = true;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = info.HtmlUrl,
+                UseShellExecute = true
+            });
+            return;
+        }
+
+        // Download ready — update menu item and show install popup
+        menuItem.Header = $"Install {info.TagName}";
+        menuItem.IsEnabled = true;
+        ShowInstallDialog(info, currentVersion);
+    }
+
+    private void ShowInstallDialog(Models.UpdateInfo info, string currentVersion)
+    {
+        var dialog = new Window
+        {
+            Width = 360, Height = 180,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
+            BorderThickness = new Thickness(1),
+            Topmost = true
+        };
+
+        var root = new StackPanel { Margin = new Thickness(24, 20, 24, 16) };
+
+        root.Children.Add(new TextBlock
+        {
+            Text = $"Shelly {info.TagName} is ready to install",
+            Foreground = new SolidColorBrush(Colors.White),
+            FontSize = 15, FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+
+        root.Children.Add(new TextBlock
+        {
+            Text = $"You're on v{currentVersion}",
+            Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)),
+            FontSize = 11, Margin = new Thickness(0, 0, 0, 20)
+        });
+
+        var btnPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        var releaseBtn = new Button
+        {
+            Content = "Release Page",
+            Width = 100, Height = 30,
+            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xBB, 0xBB)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+            BorderThickness = new Thickness(1),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        releaseBtn.Click += (_, _) =>
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = info.HtmlUrl,
+                UseShellExecute = true
+            });
+        };
+        btnPanel.Children.Add(releaseBtn);
+
+        var laterBtn = new Button
+        {
+            Content = "Later",
+            Width = 70, Height = 30,
+            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xBB, 0xBB)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+            BorderThickness = new Thickness(1),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        laterBtn.Click += (_, _) => dialog.Close();
+        btnPanel.Children.Add(laterBtn);
+
+        var installBtn = new Button
+        {
+            Content = "Install Now",
+            Width = 100, Height = 30,
+            Background = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)),
+            Foreground = new SolidColorBrush(Colors.White),
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            FontWeight = FontWeights.SemiBold
+        };
+        installBtn.Click += async (_, _) =>
+        {
+            dialog.Close();
+            await UpdateChecker.ApplyUpdateAsync(info);
+        };
+        btnPanel.Children.Add(installBtn);
+
+        root.Children.Add(btnPanel);
+        dialog.KeyDown += (_, ke) => { if (ke.Key == System.Windows.Input.Key.Escape) dialog.Close(); };
+        dialog.Content = root;
         dialog.ShowDialog();
     }
 }

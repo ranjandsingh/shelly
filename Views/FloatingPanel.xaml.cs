@@ -50,6 +50,7 @@ public partial class FloatingPanel : Window
     private const double DefaultExpandedHeight = 400;
     private double _expandedWidth = DefaultExpandedWidth;
     private double _expandedHeight = DefaultExpandedHeight;
+    private DispatcherTimer? _resizeCaptureTimer;
 
     public FloatingPanel()
     {
@@ -57,6 +58,25 @@ public partial class FloatingPanel : Window
         Width = CollapsedWidth;
         Height = CollapsedHeight;
         Loaded += OnLoaded;
+
+        // Capture expanded size after user finishes resizing (debounced)
+        _resizeCaptureTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _resizeCaptureTimer.Tick += (_, _) =>
+        {
+            _resizeCaptureTimer!.Stop();
+            if (_isExpanded && Width >= DefaultExpandedWidth * 0.5)
+            {
+                _expandedWidth = Width;
+                _expandedHeight = Height;
+            }
+        };
+        SizeChanged += (_, _) =>
+        {
+            if (!_isExpanded || ResizeMode != ResizeMode.CanResizeWithGrip) return;
+            if (Width < DefaultExpandedWidth * 0.5) return; // ignore collapsed dimensions
+            _resizeCaptureTimer.Stop();
+            _resizeCaptureTimer.Start();
+        };
 
         // Timer for hover-only collapse. Polls cursor position via Win32 GetCursorPos
         // (reliable regardless of WebView2 HWND focus). Collapses only after cursor
@@ -275,6 +295,7 @@ public partial class FloatingPanel : Window
         var scaleY = new DoubleAnimation(0.93, 1.0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
         scaleY.Completed += (_, _) =>
         {
+            if (!_isExpanded) return; // collapse started before animation finished
             ExpandedPanelScale.ScaleY = 1.0;
             // Reveal WebView2 HWND once after animation — single clean reveal, no flicker
             TerminalHost.Visibility = Visibility.Visible;
@@ -318,10 +339,6 @@ public partial class FloatingPanel : Window
         if (!_isExpanded) return;
         _isExpanded = false;
 
-        // Remember the user's panel size for next expand
-        _expandedWidth = Width;
-        _expandedHeight = Height;
-
         // Hide resize grip and WebView2 HWND immediately so the entire panel
         // animates as one clean unit (no flashing grip icon or split layers)
         ResizeMode = ResizeMode.NoResize;
@@ -345,6 +362,7 @@ public partial class FloatingPanel : Window
         var fadeOut = new DoubleAnimation(1, 0, opacityDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         fadeOut.Completed += (_, _) =>
         {
+            if (_isExpanded) return; // re-expand started before collapse finished
             ExpandedPanel.Opacity = 1;
             ExpandedPanelTranslate.Y = 0;
             ExpandedPanelScale.ScaleX = 1.0;
@@ -653,6 +671,28 @@ public partial class FloatingPanel : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
+        // Ctrl+Tab / Ctrl+Shift+Tab to cycle tabs
+        if (e.Key == Key.Tab && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            var sessions = SessionStore.Instance.Sessions;
+            if (sessions.Count < 2) { e.Handled = true; return; }
+
+            var currentIndex = -1;
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                if (sessions[i].IsActive) { currentIndex = i; break; }
+            }
+
+            int next = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
+                ? (currentIndex - 1 + sessions.Count) % sessions.Count
+                : (currentIndex + 1) % sessions.Count;
+
+            SessionStore.Instance.SelectSession(sessions[next].Id);
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)
