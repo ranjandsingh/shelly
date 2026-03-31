@@ -24,19 +24,24 @@ public static class AppSettings
         public string? DismissedUpdateVersion { get; set; }
     }
 
+    private static Data? _cached;
+
     private static Data LoadData()
     {
-        if (!File.Exists(FilePath)) return new Data();
+        if (_cached != null) return _cached;
+        if (!File.Exists(FilePath)) { _cached = new Data(); return _cached; }
         try
         {
             var json = File.ReadAllText(FilePath);
-            return JsonSerializer.Deserialize<Data>(json) ?? new Data();
+            _cached = JsonSerializer.Deserialize<Data>(json) ?? new Data();
+            return _cached;
         }
-        catch { return new Data(); }
+        catch { _cached = new Data(); return _cached; }
     }
 
     private static void SaveData(Data data)
     {
+        _cached = data;
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(data));
     }
