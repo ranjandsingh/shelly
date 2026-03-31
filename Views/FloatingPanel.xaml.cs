@@ -21,6 +21,7 @@ public partial class FloatingPanel : Window
     private DateTime? _outsideSince; // tracks when cursor first left the window
     private bool _iconVisible; // tracks whether the mascot icon is currently shown
     private bool _greetingActive; // prevents UpdateCollapsedBar from hiding during greeting
+    private DispatcherTimer? _hideIconTimer; // debounce timer to avoid hiding mascot during brief status transitions
     private const double CollapsedWidth = 48;
     private const double CollapsedWidthWithIcon = 84;
     private const double CollapsedWidthGreeting = 124;
@@ -45,8 +46,11 @@ public partial class FloatingPanel : Window
         img.Freeze();
         return img;
     }
-    private const double ExpandedWidth = 720;
-    private const double ExpandedHeight = 400;
+    private const double DefaultExpandedWidth = 720;
+    private const double DefaultExpandedHeight = 400;
+    private double _expandedWidth = DefaultExpandedWidth;
+    private double _expandedHeight = DefaultExpandedHeight;
+    private DispatcherTimer? _resizeCaptureTimer;
 
     public FloatingPanel()
     {
@@ -54,6 +58,25 @@ public partial class FloatingPanel : Window
         Width = CollapsedWidth;
         Height = CollapsedHeight;
         Loaded += OnLoaded;
+
+        // Capture expanded size after user finishes resizing (debounced)
+        _resizeCaptureTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _resizeCaptureTimer.Tick += (_, _) =>
+        {
+            _resizeCaptureTimer!.Stop();
+            if (_isExpanded && Width >= DefaultExpandedWidth * 0.5)
+            {
+                _expandedWidth = Width;
+                _expandedHeight = Height;
+            }
+        };
+        SizeChanged += (_, _) =>
+        {
+            if (!_isExpanded || ResizeMode != ResizeMode.CanResizeWithGrip) return;
+            if (Width < DefaultExpandedWidth * 0.5) return; // ignore collapsed dimensions
+            _resizeCaptureTimer.Stop();
+            _resizeCaptureTimer.Start();
+        };
 
         // Timer for hover-only collapse. Polls cursor position via Win32 GetCursorPos
         // (reliable regardless of WebView2 HWND focus). Collapses only after cursor
@@ -246,12 +269,13 @@ public partial class FloatingPanel : Window
 
         // Hide collapsed bar and set expanded panel to invisible BEFORE resizing
         // to prevent a flash frame where the pill is visible at 720x400
+        TerminalHost.Visibility = Visibility.Hidden; // hide WebView2 HWND so it doesn't flash during animation
         CollapsedBar.Visibility = Visibility.Collapsed;
         ExpandedPanel.Opacity = 0;
         ExpandedPanel.Visibility = Visibility.Visible;
 
-        Width = ExpandedWidth;
-        Height = ExpandedHeight;
+        Width = _expandedWidth;
+        Height = _expandedHeight;
         ResizeMode = ResizeMode.CanResizeWithGrip;
 
         // Fluid expand animation: scale from center + translate + staggered opacity
@@ -269,7 +293,14 @@ public partial class FloatingPanel : Window
         ExpandedPanelTranslate.Y = translateFrom;
 
         var scaleY = new DoubleAnimation(0.93, 1.0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
-        scaleY.Completed += (_, _) => ExpandedPanelScale.ScaleY = 1.0;
+        scaleY.Completed += (_, _) =>
+        {
+            if (!_isExpanded) return; // collapse started before animation finished
+            ExpandedPanelScale.ScaleY = 1.0;
+            // Reveal WebView2 HWND once after animation — single clean reveal, no flicker
+            TerminalHost.Visibility = Visibility.Visible;
+            TerminalHost.FocusTerminal();
+        };
         var scaleX = new DoubleAnimation(0.93, 1.0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
         scaleX.Completed += (_, _) => ExpandedPanelScale.ScaleX = 1.0;
         var slideDown = new DoubleAnimation(translateFrom, 0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
@@ -288,26 +319,14 @@ public partial class FloatingPanel : Window
         // IDE detection disabled — title-based detection doesn't reliably resolve full paths
         // IdeDetector.Instance.StartPolling();
 
-        // Clear TaskCompleted for all sessions when the user opens the panel
-        foreach (var s in SessionStore.Instance.Sessions)
+        // Clear TaskCompleted only for the active session — background tabs keep their indicators
+        var activeId = SessionStore.Instance.ActiveSessionId;
+        if (activeId.HasValue)
         {
-            if (s.Status == Models.TerminalStatus.TaskCompleted)
-                Services.StatusParser.AcknowledgeCompletion(s.Id);
+            var active = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == activeId.Value);
+            if (active?.Status == Models.TerminalStatus.TaskCompleted)
+                Services.StatusParser.AcknowledgeCompletion(activeId.Value);
         }
-
-        // Focus terminal
-        Dispatcher.BeginInvoke(() => TerminalHost.FocusTerminal(), DispatcherPriority.Input);
-
-        // Force WebView2 HWND reposition
-        Task.Delay(50).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
-        {
-            TerminalHost.Visibility = Visibility.Hidden;
-            Task.Delay(30).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
-            {
-                TerminalHost.Visibility = Visibility.Visible;
-                TerminalHost.FocusTerminal();
-            }));
-        }));
 
         // Brief guard so OnDeactivated doesn't fire immediately (covers 350ms expand animation)
         Task.Delay(400).ContinueWith(_ =>
@@ -343,13 +362,13 @@ public partial class FloatingPanel : Window
         var fadeOut = new DoubleAnimation(1, 0, opacityDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         fadeOut.Completed += (_, _) =>
         {
+            if (_isExpanded) return; // re-expand started before collapse finished
             ExpandedPanel.Opacity = 1;
             ExpandedPanelTranslate.Y = 0;
             ExpandedPanelScale.ScaleX = 1.0;
             ExpandedPanelScale.ScaleY = 1.0;
             ExpandedPanel.Visibility = Visibility.Collapsed;
             CollapsedBar.Visibility = Visibility.Visible;
-            TerminalHost.Visibility = Visibility.Visible; // restore for next expand
             // Let UpdateCollapsedBar handle all width/height/position
             UpdateCollapsedBarSync();
 
@@ -473,12 +492,41 @@ public partial class FloatingPanel : Window
         // Mascot icon reflects highest-priority status
         switch (overallStatus)
         {
-            case Models.TerminalStatus.Working: ShowCollapsedIcon(IconProcessing); break;
-            case Models.TerminalStatus.WaitingForInput: ShowCollapsedIcon(IconWaiting); break;
-            case Models.TerminalStatus.TaskCompleted: ShowCollapsedIcon(IconSuccess); break;
-            case Models.TerminalStatus.Interrupted: ShowCollapsedIcon(IconIdle); break;
+            case Models.TerminalStatus.Working:
+                _hideIconTimer?.Stop();
+                ShowCollapsedIcon(IconProcessing);
+                break;
+            case Models.TerminalStatus.WaitingForInput:
+                _hideIconTimer?.Stop();
+                ShowCollapsedIcon(IconWaiting);
+                break;
+            case Models.TerminalStatus.TaskCompleted:
+                _hideIconTimer?.Stop();
+                ShowCollapsedIcon(IconSuccess);
+                break;
+            case Models.TerminalStatus.Interrupted:
+                _hideIconTimer?.Stop();
+                ShowCollapsedIcon(IconIdle);
+                break;
             case Models.TerminalStatus.Idle:
-                if (!_greetingActive) HideCollapsedIcon();
+                // Delay hiding the mascot so it doesn't vanish during brief status transitions
+                if (!_greetingActive && _iconVisible)
+                {
+                    if (_hideIconTimer == null)
+                    {
+                        _hideIconTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+                        _hideIconTimer.Tick += (_, _) =>
+                        {
+                            _hideIconTimer!.Stop();
+                            var stillIdle = !SessionStore.Instance.Sessions.Any(
+                                s => s.Status != Models.TerminalStatus.Idle);
+                            if (stillIdle && !_greetingActive)
+                                HideCollapsedIcon();
+                        };
+                    }
+                    _hideIconTimer.Stop();
+                    _hideIconTimer.Start();
+                }
                 break;
         }
 
@@ -623,6 +671,28 @@ public partial class FloatingPanel : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
+        // Ctrl+Tab / Ctrl+Shift+Tab to cycle tabs
+        if (e.Key == Key.Tab && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            var sessions = SessionStore.Instance.Sessions;
+            if (sessions.Count < 2) { e.Handled = true; return; }
+
+            var currentIndex = -1;
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                if (sessions[i].IsActive) { currentIndex = i; break; }
+            }
+
+            int next = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
+                ? (currentIndex - 1 + sessions.Count) % sessions.Count
+                : (currentIndex + 1) % sessions.Count;
+
+            SessionStore.Instance.SelectSession(sessions[next].Id);
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)

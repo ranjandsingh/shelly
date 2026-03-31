@@ -106,7 +106,7 @@ public partial class App : Application
                 if (info == null || _trayIcon == null) return;
                 _trayIcon.ShowBalloonTip(
                     "Update Available",
-                    $"Shelly {info.TagName} is available. Click to update.",
+                    $"Shelly {info.TagName} is available. Downloading in background.",
                     BalloonIcon.Info);
                 BuildTrayContextMenu();
             });
@@ -181,7 +181,12 @@ public partial class App : Application
         var latestUpdate = UpdateChecker.LatestUpdate;
         if (latestUpdate != null)
         {
-            var updateItem = new MenuItem { Header = $"Update to {latestUpdate.TagName}" };
+            var header = UpdateChecker.DownloadState == UpdateDownloadState.Ready
+                ? $"Install {latestUpdate.TagName}"
+                : UpdateChecker.DownloadState == UpdateDownloadState.Downloading
+                    ? $"Update {latestUpdate.TagName} (downloading...)"
+                    : $"Update to {latestUpdate.TagName}";
+            var updateItem = new MenuItem { Header = header };
             updateItem.Click += async (_, _) =>
             {
                 try { await UpdateChecker.ApplyUpdateAsync(latestUpdate); }

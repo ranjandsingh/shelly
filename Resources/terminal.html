@@ -82,7 +82,10 @@
         let lastCols = 0;
         let lastRows = 0;
         function sendResize() {
+            const buf = term.buffer.active;
+            const wasAtBottom = buf.baseY + term.rows >= buf.length;
             fitAddon.fit();
+            if (wasAtBottom) term.scrollToBottom();
             if (term.cols !== lastCols || term.rows !== lastRows) {
                 lastCols = term.cols;
                 lastRows = term.rows;
@@ -111,7 +114,9 @@
             try {
                 const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
                 console.log(`terminalWriteBase64 #${writeCount}: ${b64.length} b64 chars -> ${bytes.length} bytes`);
-                term.write(bytes);
+                term.write(bytes, () => {
+                    term.scrollToBottom();
+                });
             } catch(e) {
                 console.error(`terminalWriteBase64 ERROR: ${e}`);
             }

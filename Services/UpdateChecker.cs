@@ -7,6 +7,8 @@ using Shelly.Models;
 
 namespace Shelly.Services;
 
+public enum UpdateDownloadState { None, Downloading, Ready, Failed }
+
 public static class UpdateChecker
 {
     private static readonly HttpClient Http = new()
@@ -28,6 +30,11 @@ public static class UpdateChecker
 
     private static volatile UpdateInfo? _latestUpdate;
     public static UpdateInfo? LatestUpdate => _latestUpdate;
+
+    private static volatile UpdateDownloadState _downloadState = UpdateDownloadState.None;
+    public static UpdateDownloadState DownloadState => _downloadState;
+
+    private static string? _downloadedInstallerPath;
 
     public static event Action? UpdateAvailable;
 
@@ -100,6 +107,10 @@ public static class UpdateChecker
                 UpdateAvailable?.Invoke();
 
             Logger.Log($"Update available: {tagName}");
+
+            // Start background download of the installer
+            _ = Task.Run(() => DownloadInstallerAsync(info));
+
             return info;
         }
         catch (Exception ex)
@@ -109,56 +120,94 @@ public static class UpdateChecker
         }
     }
 
+    /// <summary>Download the installer in the background so it's ready when the user wants to install.</summary>
+    private static async Task DownloadInstallerAsync(UpdateInfo info)
+    {
+        if (info.InstallerUrl == null || !IsTrustedUrl(info.InstallerUrl))
+        {
+            _downloadState = UpdateDownloadState.Failed;
+            return;
+        }
+
+        // Skip if already downloaded for this version
+        var tempPath = Path.Combine(Path.GetTempPath(), $"Shelly-{info.TagName}-setup.exe");
+        if (File.Exists(tempPath))
+        {
+            _downloadedInstallerPath = tempPath;
+            _downloadState = UpdateDownloadState.Ready;
+            Logger.Log($"Installer already downloaded: {tempPath}");
+            return;
+        }
+
+        _downloadState = UpdateDownloadState.Downloading;
+        Logger.Log($"Downloading installer in background: {info.InstallerUrl}");
+
+        try
+        {
+            using var downloadClient = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+            downloadClient.DefaultRequestHeaders.Add("User-Agent", "Shelly-UpdateChecker");
+
+            using var response = await downloadClient.GetAsync(info.InstallerUrl,
+                HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            var partialPath = tempPath + ".partial";
+            await using (var fs = new FileStream(partialPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await response.Content.CopyToAsync(fs);
+            }
+
+            // Rename to final path only after complete download
+            File.Move(partialPath, tempPath, overwrite: true);
+
+            _downloadedInstallerPath = tempPath;
+            _downloadState = UpdateDownloadState.Ready;
+            Logger.Log($"Installer downloaded: {tempPath}");
+        }
+        catch (Exception ex)
+        {
+            _downloadState = UpdateDownloadState.Failed;
+            Logger.Log($"Background installer download failed: {ex.Message}");
+        }
+    }
+
     public static bool IsInstallerEdition()
     {
         var dir = Path.GetDirectoryName(Environment.ProcessPath);
         return dir != null && File.Exists(Path.Combine(dir, "unins000.exe"));
     }
 
-    public static async Task ApplyUpdateAsync(UpdateInfo info)
+    /// <summary>Install the update if downloaded, otherwise open the release page.</summary>
+    public static Task ApplyUpdateAsync(UpdateInfo info)
     {
-        if (IsInstallerEdition() && info.InstallerUrl != null)
+        // If installer is ready, launch it
+        if (_downloadState == UpdateDownloadState.Ready &&
+            _downloadedInstallerPath != null &&
+            File.Exists(_downloadedInstallerPath))
         {
             try
             {
-                if (!IsTrustedUrl(info.InstallerUrl))
-                {
-                    Logger.Log($"Installer URL not from trusted host, opening release page instead");
-                    OpenReleasePage(info);
-                    return;
-                }
-
-                var tempPath = Path.Combine(Path.GetTempPath(), $"Shelly-{info.TagName}-setup.exe");
-
-                Logger.Log($"Downloading installer to {tempPath}");
-                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-                using var response = await Http.GetAsync(info.InstallerUrl,
-                    HttpCompletionOption.ResponseHeadersRead, cts.Token);
-                response.EnsureSuccessStatusCode();
-                await using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                await response.Content.CopyToAsync(fs);
-
-                Logger.Log("Launching installer");
+                Logger.Log($"Launching downloaded installer: {_downloadedInstallerPath}");
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = tempPath,
+                    FileName = _downloadedInstallerPath,
                     Arguments = "/SILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS",
                     UseShellExecute = true
                 });
 
                 System.Windows.Application.Current.Dispatcher.Invoke(
                     () => System.Windows.Application.Current.Shutdown());
+                return Task.CompletedTask;
             }
             catch (Exception ex)
             {
-                Logger.Log($"Update download/install failed: {ex.Message}");
-                OpenReleasePage(info);
+                Logger.Log($"Launching installer failed: {ex.Message}");
             }
         }
-        else
-        {
-            OpenReleasePage(info);
-        }
+
+        // Fallback: open release page
+        OpenReleasePage(info);
+        return Task.CompletedTask;
     }
 
     private static bool IsTrustedUrl(string url)
