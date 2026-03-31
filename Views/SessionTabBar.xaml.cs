@@ -177,7 +177,17 @@ public partial class SessionTabBar : UserControl
     {
         var menu = new ContextMenu();
 
-        // --- View ---
+        BuildViewSection(menu);
+        BuildSettingsSection(menu);
+        BuildAppSection(menu);
+
+        menu.PlacementTarget = sender as Button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    private void BuildViewSection(ContextMenu menu)
+    {
         var collapseItem = new MenuItem { Header = "Collapse to bar" };
         collapseItem.Click += (_, _) =>
         {
@@ -190,16 +200,15 @@ public partial class SessionTabBar : UserControl
         {
             Header = SessionStore.Instance.NotchAtBottom ? "Move notch to top" : "Move notch to bottom"
         };
-        positionItem.Click += (_, _) =>
-        {
-            SessionStore.Instance.NotchAtBottom = !SessionStore.Instance.NotchAtBottom;
-        };
+        positionItem.Click += (_, _) => SessionStore.Instance.NotchAtBottom = !SessionStore.Instance.NotchAtBottom;
         menu.Items.Add(positionItem);
+    }
 
-        // --- Settings ---
+    private void BuildSettingsSection(ContextMenu menu)
+    {
         var settingsMenu = new MenuItem { Header = "Settings" };
 
-        // Default shell submenu
+        // Default shell
         var shellMenu = new MenuItem { Header = "Default Shell" };
         foreach (var (label, path) in ConPtyTerminal.GetAvailableShells())
         {
@@ -209,38 +218,29 @@ public partial class SessionTabBar : UserControl
                 Header = label,
                 IsChecked = string.Equals(ConPtyTerminal.DefaultShell, shellPath, System.StringComparison.OrdinalIgnoreCase)
             };
-            item.Click += (_, _) =>
-            {
-                ConPtyTerminal.DefaultShell = shellPath;
-                AppSettings.SaveDefaultShell(shellPath);
-            };
+            item.Click += (_, _) => { ConPtyTerminal.DefaultShell = shellPath; AppSettings.SaveDefaultShell(shellPath); };
             shellMenu.Items.Add(item);
         }
         settingsMenu.Items.Add(shellMenu);
 
-        // Text size submenu
+        // Text size
         var textSizeMenu = new MenuItem { Header = "Text Size" };
         var currentFontSize = AppSettings.LoadFontSize();
-        var sizes = new[] { ("Small", 9), ("Medium", 11), ("Large", 14), ("Extra Large", 18) };
-        foreach (var (label, size) in sizes)
+        foreach (var (label, size) in new[] { ("Small", 9), ("Medium", 11), ("Large", 14), ("Extra Large", 18) })
         {
             var s = size;
-            var item2 = new MenuItem
-            {
-                Header = label,
-                IsChecked = currentFontSize == s
-            };
-            item2.Click += (_, _) =>
+            var item = new MenuItem { Header = label, IsChecked = currentFontSize == s };
+            item.Click += (_, _) =>
             {
                 AppSettings.SaveFontSize(s);
                 if (Window.GetWindow(this) is FloatingPanel panel)
                     panel.TerminalHost.ApplyFontSize(s);
             };
-            textSizeMenu.Items.Add(item2);
+            textSizeMenu.Items.Add(item);
         }
         settingsMenu.Items.Add(textSizeMenu);
 
-        // Keybinding option
+        // Keybinding
         var hkMgr = (Application.Current as App)?.HotkeyManager;
         var currentBinding = hkMgr?.CustomVk != null
             ? HotkeyManager.FormatHotkey(hkMgr.CustomModifiers!.Value, hkMgr.CustomVk!.Value)
@@ -249,7 +249,7 @@ public partial class SessionTabBar : UserControl
         {
             Header = currentBinding != null ? $"Keybinding: {currentBinding}" : "Set custom keybinding"
         };
-        keybindItem.Click += (_, _) => ShowKeybindingDialog();
+        keybindItem.Click += (_, _) => { if (hkMgr != null) KeybindingDialog.Show(hkMgr); };
         settingsMenu.Items.Add(keybindItem);
 
         if (currentBinding != null)
@@ -259,24 +259,13 @@ public partial class SessionTabBar : UserControl
             settingsMenu.Items.Add(clearItem);
         }
 
-        var autoLaunchItem = new MenuItem
+        // Toggles
+        AddToggle(settingsMenu, "Auto-launch Claude", AppSettings.LoadAutoLaunchClaude,
+            v => AppSettings.SaveAutoLaunchClaude(v));
+        AddToggle(settingsMenu, "Show hints", AppSettings.LoadShowHints, v =>
         {
-            Header = "Auto-launch Claude",
-            IsChecked = AppSettings.LoadAutoLaunchClaude()
-        };
-        autoLaunchItem.Click += (_, _) => AppSettings.SaveAutoLaunchClaude(!AppSettings.LoadAutoLaunchClaude());
-        settingsMenu.Items.Add(autoLaunchItem);
-
-        var showHintsItem = new MenuItem
-        {
-            Header = "Show hints",
-            IsChecked = AppSettings.LoadShowHints()
-        };
-        showHintsItem.Click += (_, _) =>
-        {
-            var enabled = !AppSettings.LoadShowHints();
-            AppSettings.SaveShowHints(enabled);
-            if (enabled)
+            AppSettings.SaveShowHints(v);
+            if (v)
             {
                 _hintVisible = true;
                 _hintTimer!.Interval = TimeSpan.FromSeconds(HintShowSeconds);
@@ -288,39 +277,33 @@ public partial class SessionTabBar : UserControl
                 _hintTimer?.Stop();
                 FadeOutHint(() => HintText.Visibility = Visibility.Collapsed);
             }
-        };
-        settingsMenu.Items.Add(showHintsItem);
+        });
+        AddToggle(settingsMenu, "Sound", AppSettings.LoadSoundEnabled,
+            v => AppSettings.SaveSoundEnabled(v));
 
-        var soundItem = new MenuItem
-        {
-            Header = "Sound",
-            IsChecked = AppSettings.LoadSoundEnabled()
-        };
-        soundItem.Click += (_, _) => AppSettings.SaveSoundEnabled(!AppSettings.LoadSoundEnabled());
-        settingsMenu.Items.Add(soundItem);
-
-        var autoStartItem = new MenuItem
-        {
-            Header = "Start with Windows",
-            IsChecked = AutoStartManager.IsEnabled
-        };
+        var autoStartItem = new MenuItem { Header = "Start with Windows", IsChecked = AutoStartManager.IsEnabled };
         autoStartItem.Click += (_, _) => AutoStartManager.Toggle();
         settingsMenu.Items.Add(autoStartItem);
 
         menu.Items.Add(settingsMenu);
+    }
 
-        // --- App ---
+    private static void AddToggle(MenuItem parent, string header, Func<bool> load, Action<bool> save)
+    {
+        var item = new MenuItem { Header = header, IsChecked = load() };
+        item.Click += (_, _) => save(!load());
+        parent.Items.Add(item);
+    }
+
+    private void BuildAppSection(ContextMenu menu)
+    {
         var updateItem = new MenuItem { Header = "Check for updates" };
-        updateItem.Click += (_, _) => RunUpdateFlowInMenu(updateItem);
+        updateItem.Click += (_, _) => UpdateFlowController.RunInMenu(updateItem);
         menu.Items.Add(updateItem);
 
         var quitItem = new MenuItem { Header = "Quit Shelly" };
         quitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
         menu.Items.Add(quitItem);
-
-        menu.PlacementTarget = sender as Button;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-        menu.IsOpen = true;
     }
 
     private void RenameTab_Click(object sender, RoutedEventArgs e)
@@ -412,243 +395,4 @@ public partial class SessionTabBar : UserControl
         }
     }
 
-    private void ShowKeybindingDialog()
-    {
-        var hkMgr = (Application.Current as App)?.HotkeyManager;
-        if (hkMgr == null) return;
-
-        uint capturedMod = 0;
-        uint capturedVk = 0;
-
-        var dialog = new Window
-        {
-            Title = "Set Keybinding",
-            Width = 320, Height = 140,
-            WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStyle = WindowStyle.None,
-            AllowsTransparency = true,
-            Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
-            BorderThickness = new Thickness(1),
-            Topmost = true
-        };
-
-        var panel = new StackPanel { Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center };
-
-        var label = new TextBlock
-        {
-            Text = "Press Ctrl + key (or Ctrl+Shift, Ctrl+Alt, etc.)",
-            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xBB, 0xBB)),
-            FontSize = 12, Margin = new Thickness(0, 0, 0, 10),
-            TextAlignment = TextAlignment.Center
-        };
-        panel.Children.Add(label);
-
-        var display = new TextBlock
-        {
-            Text = "Waiting for keypress...",
-            Foreground = new SolidColorBrush(Colors.White),
-            FontSize = 16, FontWeight = FontWeights.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 12)
-        };
-        panel.Children.Add(display);
-
-        var hint = new TextBlock
-        {
-            Text = "Press Escape to cancel",
-            Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)),
-            FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center
-        };
-        panel.Children.Add(hint);
-
-        dialog.Content = panel;
-
-        dialog.KeyDown += (_, ke) =>
-        {
-            ke.Handled = true;
-
-            if (ke.Key == Key.Escape) { dialog.Close(); return; }
-
-            // Ignore modifier-only presses
-            if (ke.Key == Key.LeftCtrl || ke.Key == Key.RightCtrl ||
-                ke.Key == Key.LeftAlt || ke.Key == Key.RightAlt ||
-                ke.Key == Key.LeftShift || ke.Key == Key.RightShift ||
-                ke.Key == Key.LWin || ke.Key == Key.RWin ||
-                ke.Key == Key.System && (ke.SystemKey == Key.LeftAlt || ke.SystemKey == Key.RightAlt))
-                return;
-
-            // Must have Ctrl
-            var mod = Keyboard.Modifiers;
-            if (!mod.HasFlag(ModifierKeys.Control)) return;
-
-            uint nativeMod = NativeMethods.MOD_CONTROL;
-            if (mod.HasFlag(ModifierKeys.Alt)) nativeMod |= NativeMethods.MOD_ALT;
-            if (mod.HasFlag(ModifierKeys.Shift)) nativeMod |= NativeMethods.MOD_SHIFT;
-
-            // Get the actual key (not the modifier)
-            var actualKey = ke.Key == Key.System ? ke.SystemKey : ke.Key;
-            var vk = (uint)KeyInterop.VirtualKeyFromKey(actualKey);
-
-            capturedMod = nativeMod;
-            capturedVk = vk;
-
-            var combo = HotkeyManager.FormatHotkey(nativeMod, vk);
-            display.Text = combo;
-
-            // Auto-apply after a brief moment
-            dialog.Dispatcher.BeginInvoke(() =>
-            {
-                hkMgr.SetCustomHotkey(capturedMod, capturedVk);
-                dialog.Close();
-            }, System.Windows.Threading.DispatcherPriority.Background);
-        };
-
-        dialog.ShowDialog();
-    }
-
-    /// <summary>Update flow inline in the menu: check → download → install popup only when ready.</summary>
-    private async void RunUpdateFlowInMenu(MenuItem menuItem)
-    {
-        var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
-
-        menuItem.IsEnabled = false;
-        menuItem.Header = "Checking for updates...";
-
-        var info = await Task.Run(() => UpdateChecker.CheckForUpdateAsync(force: true));
-
-        if (info == null)
-        {
-            menuItem.Header = $"Up to date (v{currentVersion})";
-            await Task.Delay(2000);
-            menuItem.Header = "Check for updates";
-            menuItem.IsEnabled = true;
-            return;
-        }
-
-        menuItem.Header = $"Downloading {info.TagName}...";
-
-        // Poll until download finishes
-        while (UpdateChecker.DownloadState == UpdateDownloadState.Downloading ||
-               UpdateChecker.DownloadState == UpdateDownloadState.None)
-        {
-            await Task.Delay(300);
-        }
-
-        if (UpdateChecker.DownloadState != UpdateDownloadState.Ready)
-        {
-            menuItem.Header = "Download failed — opening release page...";
-            await Task.Delay(1500);
-            menuItem.Header = "Check for updates";
-            menuItem.IsEnabled = true;
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = info.HtmlUrl,
-                UseShellExecute = true
-            });
-            return;
-        }
-
-        // Download ready — update menu item and show install popup
-        menuItem.Header = $"Install {info.TagName}";
-        menuItem.IsEnabled = true;
-        ShowInstallDialog(info, currentVersion);
-    }
-
-    private void ShowInstallDialog(Models.UpdateInfo info, string currentVersion)
-    {
-        var dialog = new Window
-        {
-            Width = 360, Height = 180,
-            WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStyle = WindowStyle.None,
-            AllowsTransparency = true,
-            Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
-            BorderThickness = new Thickness(1),
-            Topmost = true
-        };
-
-        var root = new StackPanel { Margin = new Thickness(24, 20, 24, 16) };
-
-        root.Children.Add(new TextBlock
-        {
-            Text = $"Shelly {info.TagName} is ready to install",
-            Foreground = new SolidColorBrush(Colors.White),
-            FontSize = 15, FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 6)
-        });
-
-        root.Children.Add(new TextBlock
-        {
-            Text = $"You're on v{currentVersion}",
-            Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)),
-            FontSize = 11, Margin = new Thickness(0, 0, 0, 20)
-        });
-
-        var btnPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right
-        };
-
-        var releaseBtn = new Button
-        {
-            Content = "Release Page",
-            Width = 100, Height = 30,
-            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A)),
-            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xBB, 0xBB)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
-            BorderThickness = new Thickness(1),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            Margin = new Thickness(0, 0, 8, 0)
-        };
-        releaseBtn.Click += (_, _) =>
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = info.HtmlUrl,
-                UseShellExecute = true
-            });
-        };
-        btnPanel.Children.Add(releaseBtn);
-
-        var laterBtn = new Button
-        {
-            Content = "Later",
-            Width = 70, Height = 30,
-            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A)),
-            Foreground = new SolidColorBrush(Color.FromRgb(0xBB, 0xBB, 0xBB)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
-            BorderThickness = new Thickness(1),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            Margin = new Thickness(0, 0, 8, 0)
-        };
-        laterBtn.Click += (_, _) => dialog.Close();
-        btnPanel.Children.Add(laterBtn);
-
-        var installBtn = new Button
-        {
-            Content = "Install Now",
-            Width = 100, Height = 30,
-            Background = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)),
-            Foreground = new SolidColorBrush(Colors.White),
-            BorderThickness = new Thickness(0),
-            Cursor = System.Windows.Input.Cursors.Hand,
-            FontWeight = FontWeights.SemiBold
-        };
-        installBtn.Click += async (_, _) =>
-        {
-            dialog.Close();
-            await UpdateChecker.ApplyUpdateAsync(info);
-        };
-        btnPanel.Children.Add(installBtn);
-
-        root.Children.Add(btnPanel);
-        dialog.KeyDown += (_, ke) => { if (ke.Key == System.Windows.Input.Key.Escape) dialog.Close(); };
-        dialog.Content = root;
-        dialog.ShowDialog();
-    }
 }

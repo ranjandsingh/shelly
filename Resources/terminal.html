@@ -82,22 +82,24 @@
         let lastCols = 0;
         let lastRows = 0;
         function sendResize() {
-            const buf = term.buffer.active;
-            const wasAtBottom = buf.baseY + term.rows >= buf.length;
-            fitAddon.fit();
-            if (wasAtBottom) term.scrollToBottom();
-            if (term.cols !== lastCols || term.rows !== lastRows) {
-                lastCols = term.cols;
-                lastRows = term.rows;
-                console.log(`resize: ${lastCols}x${lastRows}`);
-                if (window.chrome && window.chrome.webview) {
-                    window.chrome.webview.postMessage(JSON.stringify({
-                        type: 'resize',
-                        cols: term.cols,
-                        rows: term.rows
-                    }));
+            try {
+                const buf = term.buffer.active;
+                const wasAtBottom = buf.baseY + term.rows >= buf.length;
+                fitAddon.fit();
+                if (wasAtBottom) term.scrollToBottom();
+                if (term.cols !== lastCols || term.rows !== lastRows) {
+                    lastCols = term.cols;
+                    lastRows = term.rows;
+                    console.log(`resize: ${lastCols}x${lastRows}`);
+                    if (window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage(JSON.stringify({
+                            type: 'resize',
+                            cols: term.cols,
+                            rows: term.rows
+                        }));
+                    }
                 }
-            }
+            } catch(e) { console.error(`sendResize ERROR: ${e}`); }
         }
         const resizeObserver = new ResizeObserver(() => {
             if (resizeTimer) clearTimeout(resizeTimer);
@@ -123,30 +125,36 @@
         }
 
         function terminalReset() {
-            console.log('terminalReset called');
-            term.reset();
+            try {
+                console.log('terminalReset called');
+                term.reset();
+            } catch(e) { console.error(`terminalReset ERROR: ${e}`); }
         }
 
         // Signal that JS is ready
         console.log('xterm.js initialized, cols=' + term.cols + ' rows=' + term.rows);
 
         function setFontSize(size) {
-            console.log('setFontSize: ' + size);
-            term.options.fontSize = size;
-            fitAddon.fit();
+            try {
+                console.log('setFontSize: ' + size);
+                term.options.fontSize = size;
+                fitAddon.fit();
+            } catch(e) { console.error(`setFontSize ERROR: ${e}`); }
         }
 
         function terminalGetVisibleText() {
-            const buffer = term.buffer.active;
-            const rows = term.rows;
-            const baseY = buffer.baseY;
-            let lines = [];
-            // Only read the bottom viewport (most recent output), not entire scrollback
-            for (let i = baseY; i < baseY + rows; i++) {
-                const line = buffer.getLine(i);
-                if (line) lines.push(line.translateToString(true));
-            }
-            return lines.join('\n');
+            try {
+                const buffer = term.buffer.active;
+                const rows = term.rows;
+                const baseY = buffer.baseY;
+                let lines = [];
+                // Only read the bottom viewport (most recent output), not entire scrollback
+                for (let i = baseY; i < baseY + rows; i++) {
+                    const line = buffer.getLine(i);
+                    if (line) lines.push(line.translateToString(true));
+                }
+                return lines.join('\n');
+            } catch(e) { console.error(`terminalGetVisibleText ERROR: ${e}`); return ''; }
         }
     </script>
 </body>

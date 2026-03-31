@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Shelly.Animations;
 using Shelly.Interop;
@@ -16,47 +15,29 @@ public partial class FloatingPanel : Window
 {
     private bool _isExpanded;
     private bool _isShowing;
-    private bool _hasInteracted; // true once user clicks on the expanded panel
+    private bool _hasInteracted;
     private DispatcherTimer? _hoverCollapseTimer;
-    private DateTime? _outsideSince; // tracks when cursor first left the window
-    private bool _iconVisible; // tracks whether the mascot icon is currently shown
-    private bool _greetingActive; // prevents UpdateCollapsedBar from hiding during greeting
-    private DispatcherTimer? _hideIconTimer; // debounce timer to avoid hiding mascot during brief status transitions
-    private const double CollapsedWidth = 48;
-    private const double CollapsedWidthWithIcon = 84;
-    private const double CollapsedWidthGreeting = 124;
-    private const double CollapsedHeight = 18;
-    private const double CollapsedHeightWithIcon = 36;
-    private const double CollapsedHeightGreeting = 48;
+    private DateTime? _outsideSince;
+    private DispatcherTimer? _showingGuardTimer;
 
-    // Mascot icon images for each status
-    private static readonly BitmapImage IconIdle = LoadIcon("Resources/icon.png");
-    private static readonly BitmapImage IconProcessing = LoadIcon("Resources/icon-processing.png");
-    private static readonly BitmapImage IconWaiting = LoadIcon("Resources/icon-waiting.png");
-    private static readonly BitmapImage IconSuccess = LoadIcon("Resources/icon-success.png");
-
-    private static BitmapImage LoadIcon(string path)
-    {
-        var img = new BitmapImage();
-        img.BeginInit();
-        img.UriSource = new Uri($"pack://application:,,,/{path}");
-        img.DecodePixelWidth = 40; // 2x for crisp rendering at 20px
-        img.CacheOption = BitmapCacheOption.OnLoad;
-        img.EndInit();
-        img.Freeze();
-        return img;
-    }
     private const double DefaultExpandedWidth = 720;
     private const double DefaultExpandedHeight = 400;
     private double _expandedWidth = DefaultExpandedWidth;
     private double _expandedHeight = DefaultExpandedHeight;
     private DispatcherTimer? _resizeCaptureTimer;
 
+    private NotchController _notch = null!;
+    private Models.TerminalStatus _lastAutoExpandStatus;
+
+    public bool IsExpanded => _isExpanded;
+
     public FloatingPanel()
     {
         InitializeComponent();
-        Width = CollapsedWidth;
-        Height = CollapsedHeight;
+        _notch = new NotchController(this);
+
+        Width = NotchController.CollapsedWidth;
+        Height = NotchController.CollapsedHeight;
         Loaded += OnLoaded;
 
         // Capture expanded size after user finishes resizing (debounced)
@@ -73,14 +54,12 @@ public partial class FloatingPanel : Window
         SizeChanged += (_, _) =>
         {
             if (!_isExpanded || ResizeMode != ResizeMode.CanResizeWithGrip) return;
-            if (Width < DefaultExpandedWidth * 0.5) return; // ignore collapsed dimensions
+            if (Width < DefaultExpandedWidth * 0.5) return;
             _resizeCaptureTimer.Stop();
             _resizeCaptureTimer.Start();
         };
 
-        // Timer for hover-only collapse. Polls cursor position via Win32 GetCursorPos
-        // (reliable regardless of WebView2 HWND focus). Collapses only after cursor
-        // has been outside the window for 500ms continuously.
+        // Hover auto-collapse timer
         _hoverCollapseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         _hoverCollapseTimer.Tick += (_, _) =>
         {
@@ -89,7 +68,6 @@ public partial class FloatingPanel : Window
             bool inside = false;
             if (NativeMethods.GetCursorPos(out var pt))
             {
-                // Compare in screen pixels — use PointToScreen for DPI-awareness
                 try
                 {
                     var topLeft = PointToScreen(new Point(0, 0));
@@ -101,9 +79,7 @@ public partial class FloatingPanel : Window
             }
 
             if (inside)
-            {
-                _outsideSince = null; // reset
-            }
+                _outsideSince = null;
             else
             {
                 _outsideSince ??= DateTime.UtcNow;
@@ -117,14 +93,13 @@ public partial class FloatingPanel : Window
         };
 
         SessionStore.Instance.ActiveSessionChanged += OnActiveSessionChanged;
-        SessionStore.Instance.Sessions.CollectionChanged += (_, _) => UpdateCollapsedBar();
+        SessionStore.Instance.Sessions.CollectionChanged += (_, _) => _notch.Update();
         SessionStore.Instance.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(SessionStore.NotchAtBottom))
                 Dispatcher.InvokeAsync(PositionCenter);
         };
 
-        // Listen for status changes on all sessions
         foreach (var s in SessionStore.Instance.Sessions)
             s.PropertyChanged += OnSessionPropertyChanged;
         SessionStore.Instance.Sessions.CollectionChanged += (_, args) =>
@@ -139,124 +114,30 @@ public partial class FloatingPanel : Window
     {
         Logger.Log("FloatingPanel: OnLoaded");
 
-        // Hide from Alt+Tab by applying WS_EX_TOOLWINDOW
         var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         var exStyle = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE);
         NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, exStyle | (IntPtr)NativeMethods.WS_EX_TOOLWINDOW);
 
         PositionCenter();
-        UpdateCollapsedBar();
+        _notch.UpdateSync();
 
         var activeId = SessionStore.Instance.ActiveSessionId;
         Logger.Log($"FloatingPanel: activeSessionId={activeId}");
         if (activeId.HasValue)
             TerminalHost.AttachSession(activeId.Value);
 
-        // Launch greeting: briefly show the mascot icon, then fade it away
-        PlayLaunchGreeting();
-    }
-
-    private static readonly string[] Greetings =
-    [
-        "Hello!",
-        "Hey!",
-        "Namaste!",
-        "Hola!",
-        "Bonjour!",
-        "Ciao!",
-        "Hallo!",
-        "Olá!",
-        "Ahoj!",
-        "Salut!",
-        "Hej!",
-        "Aloha!",
-        "Salam!",
-        "Sawubona!",
-        "Merhaba!",
-    ];
-
-    private void PlayLaunchGreeting()
-    {
-        _greetingActive = true;
-
-        CollapsedGreeting.Text = Greetings[Random.Shared.Next(Greetings.Length)];
-
-        // Show mascot icon with greeting text
-        CollapsedIcon.Width = 28;
-        CollapsedIcon.Height = 28;
-        CollapsedBar.CornerRadius = new CornerRadius(16);
-        CollapsedIcon.Source = IconIdle;
-        CollapsedIcon.Opacity = 0;
-        CollapsedIcon.Visibility = Visibility.Visible;
-        CollapsedGreeting.Opacity = 0;
-        CollapsedGreeting.Visibility = Visibility.Visible;
-        _iconVisible = true;
-
-        Width = CollapsedWidthGreeting;
-        Height = CollapsedHeightGreeting;
-        PositionCenter();
-
-        // Fade in icon and text
-        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400))
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            FillBehavior = FillBehavior.Stop
-        };
-        fadeIn.Completed += (_, _) => { CollapsedIcon.Opacity = 1; CollapsedGreeting.Opacity = 1; };
-        CollapsedIcon.BeginAnimation(OpacityProperty, fadeIn);
-        CollapsedGreeting.BeginAnimation(OpacityProperty, fadeIn);
-
-        // Hold for 3 seconds, then fade out and collapse
-        Task.Delay(3000).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
-        {
-            _greetingActive = false;
-
-            // Fade out everything together, then collapse to pill
-            var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
-                FillBehavior = FillBehavior.Stop
-            };
-            fadeOut.Completed += (_, _) =>
-            {
-                CollapsedIcon.Opacity = 1;
-                CollapsedIcon.Visibility = Visibility.Collapsed;
-                CollapsedIcon.Width = 24;
-                CollapsedIcon.Height = 24;
-                CollapsedGreeting.Opacity = 1;
-                CollapsedGreeting.Visibility = Visibility.Collapsed;
-                CollapsedBar.CornerRadius = new CornerRadius(8);
-                _iconVisible = false;
-
-                // Check if a status is active — if so, let UpdateCollapsedBar handle the icon
-                var anyActive = SessionStore.Instance.Sessions.Any(s => s.Status != Models.TerminalStatus.Idle);
-                if (anyActive)
-                {
-                    UpdateCollapsedBar();
-                }
-                else
-                {
-                    Width = CollapsedWidth;
-                    Height = CollapsedHeight;
-                    PositionCenter();
-                }
-            };
-            CollapsedIcon.BeginAnimation(OpacityProperty, fadeOut);
-            CollapsedGreeting.BeginAnimation(OpacityProperty, fadeOut);
-        }));
+        _notch.PlayLaunchGreeting();
     }
 
     private void OnActiveSessionChanged(Guid sessionId)
     {
         Logger.Log($"FloatingPanel: ActiveSessionChanged -> {sessionId}");
         TerminalHost.AttachSession(sessionId);
-        UpdateCollapsedBar();
+        _notch.Update();
     }
 
-    public bool IsExpanded => _isExpanded;
+    // --- Expand / Collapse ---
 
-    /// <summary>Expand from notch to full panel.</summary>
-    /// <param name="pinOpen">If true, panel stays open until user clicks outside (used for hotkey/explicit activation).</param>
     public void ExpandPanel(bool pinOpen = false)
     {
         if (_isExpanded) return;
@@ -265,11 +146,9 @@ public partial class FloatingPanel : Window
         _hasInteracted = pinOpen;
         _outsideSince = null;
         if (!pinOpen)
-            _hoverCollapseTimer?.Start(); // only auto-collapse on hover-triggered expand
+            _hoverCollapseTimer?.Start();
 
-        // Hide collapsed bar and set expanded panel to invisible BEFORE resizing
-        // to prevent a flash frame where the pill is visible at 720x400
-        TerminalHost.Visibility = Visibility.Hidden; // hide WebView2 HWND so it doesn't flash during animation
+        TerminalHost.Visibility = Visibility.Hidden;
         CollapsedBar.Visibility = Visibility.Collapsed;
         ExpandedPanel.Opacity = 0;
         ExpandedPanel.Visibility = Visibility.Visible;
@@ -278,7 +157,6 @@ public partial class FloatingPanel : Window
         Height = _expandedHeight;
         ResizeMode = ResizeMode.CanResizeWithGrip;
 
-        // Fluid expand animation: scale from center + translate + staggered opacity
         bool bottom = SessionStore.Instance.NotchAtBottom;
         ExpandedPanel.RenderTransformOrigin = new Point(0.5, 0.5);
         double translateFrom = bottom ? 20 : -20;
@@ -295,9 +173,8 @@ public partial class FloatingPanel : Window
         var scaleY = new DoubleAnimation(0.93, 1.0, transformDuration) { EasingFunction = springEase, FillBehavior = FillBehavior.Stop };
         scaleY.Completed += (_, _) =>
         {
-            if (!_isExpanded) return; // collapse started before animation finished
+            if (!_isExpanded) return;
             ExpandedPanelScale.ScaleY = 1.0;
-            // Reveal WebView2 HWND once after animation — single clean reveal, no flicker
             TerminalHost.Visibility = Visibility.Visible;
             TerminalHost.FocusTerminal();
         };
@@ -316,35 +193,32 @@ public partial class FloatingPanel : Window
         PositionCenter();
         Show();
         Activate();
-        // IDE detection disabled — title-based detection doesn't reliably resolve full paths
-        // IdeDetector.Instance.StartPolling();
 
-        // Clear TaskCompleted only for the active session — background tabs keep their indicators
         var activeId = SessionStore.Instance.ActiveSessionId;
         if (activeId.HasValue)
         {
             var active = SessionStore.Instance.Sessions.FirstOrDefault(s => s.Id == activeId.Value);
             if (active?.Status == Models.TerminalStatus.TaskCompleted)
-                Services.StatusParser.AcknowledgeCompletion(activeId.Value);
+                StatusParser.AcknowledgeCompletion(activeId.Value);
         }
 
-        // Brief guard so OnDeactivated doesn't fire immediately (covers 350ms expand animation)
-        Task.Delay(400).ContinueWith(_ =>
-            Dispatcher.InvokeAsync(() => _isShowing = false));
+        if (_showingGuardTimer == null)
+        {
+            _showingGuardTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            _showingGuardTimer.Tick += (_, _) => { _showingGuardTimer.Stop(); _isShowing = false; };
+        }
+        _showingGuardTimer.Stop();
+        _showingGuardTimer.Start();
     }
 
-    /// <summary>Collapse back to notch. Mirrors the original HidePanel logic.</summary>
     public void CollapsePanel()
     {
         if (!_isExpanded) return;
         _isExpanded = false;
 
-        // Hide resize grip and WebView2 HWND immediately so the entire panel
-        // animates as one clean unit (no flashing grip icon or split layers)
         ResizeMode = ResizeMode.NoResize;
         TerminalHost.Visibility = Visibility.Hidden;
 
-        // Fluid collapse animation: scale + translate + opacity
         bool bottom = SessionStore.Instance.NotchAtBottom;
         ExpandedPanel.RenderTransformOrigin = new Point(0.5, 0.5);
         double translateTo = bottom ? 15 : -15;
@@ -362,15 +236,14 @@ public partial class FloatingPanel : Window
         var fadeOut = new DoubleAnimation(1, 0, opacityDuration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
         fadeOut.Completed += (_, _) =>
         {
-            if (_isExpanded) return; // re-expand started before collapse finished
+            if (_isExpanded) return;
             ExpandedPanel.Opacity = 1;
             ExpandedPanelTranslate.Y = 0;
             ExpandedPanelScale.ScaleX = 1.0;
             ExpandedPanelScale.ScaleY = 1.0;
             ExpandedPanel.Visibility = Visibility.Collapsed;
             CollapsedBar.Visibility = Visibility.Visible;
-            // Let UpdateCollapsedBar handle all width/height/position
-            UpdateCollapsedBarSync();
+            _notch.UpdateSync();
 
             if (!SessionStore.Instance.IsPinned)
                 IdeDetector.Instance.StopPolling();
@@ -384,29 +257,24 @@ public partial class FloatingPanel : Window
 
     public void TogglePanel()
     {
-        if (_isExpanded)
-            CollapsePanel();
-        else
-            ExpandPanel(pinOpen: true);
+        if (_isExpanded) CollapsePanel();
+        else ExpandPanel(pinOpen: true);
     }
 
-    private void PositionCenter()
+    public void PositionCenter()
     {
         var screen = SystemParameters.WorkArea;
         Left = (screen.Width - Width) / 2;
         Top = SessionStore.Instance.NotchAtBottom ? screen.Height - Height : 0;
     }
 
-    // --- Claude status features ---
-
-    private Models.TerminalStatus _lastAutoExpandStatus;
+    // --- Status change handling ---
 
     private void OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(Models.TerminalSession.Status)) return;
-        UpdateCollapsedBar();
+        _notch.Update();
 
-        // Auto-expand when Claude needs attention (once per transition)
         if (sender is Models.TerminalSession session &&
             session.Id == SessionStore.Instance.ActiveSessionId &&
             session.Status == Models.TerminalStatus.WaitingForInput &&
@@ -422,229 +290,7 @@ public partial class FloatingPanel : Window
         }
     }
 
-    /// <summary>Queue a collapsed bar update on the dispatcher (used by event handlers).</summary>
-    private void UpdateCollapsedBar()
-    {
-        Dispatcher.InvokeAsync(UpdateCollapsedBarSync);
-    }
-
-    /// <summary>Synchronously update collapsed bar indicators, mascot icon, and size.
-    /// Must be called on the UI thread.</summary>
-    private void UpdateCollapsedBarSync()
-    {
-        var sessions = SessionStore.Instance.Sessions;
-
-        // Count sessions per status type
-        int workingCount = 0, waitingCount = 0, completedCount = 0, interruptedCount = 0;
-        foreach (var s in sessions)
-        {
-            switch (s.Status)
-            {
-                case Models.TerminalStatus.Working: workingCount++; break;
-                case Models.TerminalStatus.WaitingForInput: waitingCount++; break;
-                case Models.TerminalStatus.TaskCompleted: completedCount++; break;
-                case Models.TerminalStatus.Interrupted: interruptedCount++; break;
-            }
-        }
-
-        // Determine highest-priority status for mascot icon
-        var overallStatus = waitingCount > 0 ? Models.TerminalStatus.WaitingForInput
-            : workingCount > 0 ? Models.TerminalStatus.Working
-            : completedCount > 0 ? Models.TerminalStatus.TaskCompleted
-            : interruptedCount > 0 ? Models.TerminalStatus.Interrupted
-            : Models.TerminalStatus.Idle;
-
-        // Hide all groups and stop animations first
-        WorkingGroup.Visibility = Visibility.Collapsed;
-        WaitingGroup.Visibility = Visibility.Collapsed;
-        CompletedGroup.Visibility = Visibility.Collapsed;
-        InterruptedGroup.Visibility = Visibility.Collapsed;
-        StopAnimations();
-
-        // Show each status group with count badge (hidden when count is 1)
-        if (workingCount > 0)
-        {
-            WorkingGroup.Visibility = Visibility.Visible;
-            WorkingCount.Text = workingCount.ToString();
-            WorkingCount.Visibility = workingCount > 1 ? Visibility.Visible : Visibility.Collapsed;
-            StartSpinnerAnimation();
-        }
-        if (waitingCount > 0)
-        {
-            WaitingGroup.Visibility = Visibility.Visible;
-            WaitingCount.Text = waitingCount.ToString();
-            WaitingCount.Visibility = waitingCount > 1 ? Visibility.Visible : Visibility.Collapsed;
-            StartPulseAnimation();
-        }
-        if (completedCount > 0)
-        {
-            CompletedGroup.Visibility = Visibility.Visible;
-            CompletedCount.Text = completedCount.ToString();
-            CompletedCount.Visibility = completedCount > 1 ? Visibility.Visible : Visibility.Collapsed;
-        }
-        if (interruptedCount > 0)
-        {
-            InterruptedGroup.Visibility = Visibility.Visible;
-            InterruptedCount.Text = interruptedCount.ToString();
-            InterruptedCount.Visibility = interruptedCount > 1 ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        // Mascot icon reflects highest-priority status
-        switch (overallStatus)
-        {
-            case Models.TerminalStatus.Working:
-                _hideIconTimer?.Stop();
-                ShowCollapsedIcon(IconProcessing);
-                break;
-            case Models.TerminalStatus.WaitingForInput:
-                _hideIconTimer?.Stop();
-                ShowCollapsedIcon(IconWaiting);
-                break;
-            case Models.TerminalStatus.TaskCompleted:
-                _hideIconTimer?.Stop();
-                ShowCollapsedIcon(IconSuccess);
-                break;
-            case Models.TerminalStatus.Interrupted:
-                _hideIconTimer?.Stop();
-                ShowCollapsedIcon(IconIdle);
-                break;
-            case Models.TerminalStatus.Idle:
-                // Delay hiding the mascot so it doesn't vanish during brief status transitions
-                if (!_greetingActive && _iconVisible)
-                {
-                    if (_hideIconTimer == null)
-                    {
-                        _hideIconTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-                        _hideIconTimer.Tick += (_, _) =>
-                        {
-                            _hideIconTimer!.Stop();
-                            var stillIdle = !SessionStore.Instance.Sessions.Any(
-                                s => s.Status != Models.TerminalStatus.Idle);
-                            if (stillIdle && !_greetingActive)
-                                HideCollapsedIcon();
-                        };
-                    }
-                    _hideIconTimer.Stop();
-                    _hideIconTimer.Start();
-                }
-                break;
-        }
-
-        // Dynamic width/height based on visible groups
-        if (!_isExpanded)
-        {
-            if (overallStatus != Models.TerminalStatus.Idle)
-            {
-                // Icon area (56px) + indicator groups
-                Width = GetCollapsedBarWidth(workingCount, waitingCount, completedCount, interruptedCount);
-                Height = CollapsedHeightWithIcon;
-            }
-            else if (!_greetingActive && !_iconVisible)
-            {
-                Width = CollapsedWidth;
-                Height = CollapsedHeight;
-            }
-            PositionCenter();
-        }
-    }
-
-    private double GetCollapsedBarWidth(int workingCount, int waitingCount, int completedCount, int interruptedCount)
-    {
-        // 56 = mascot icon (24px) + icon margin (6px) + bar Padding (10px * 2) + extra (6px)
-        // Per group: Canvas 14px wide (or 8px for Interrupted Ellipse) + Margin 1px each side
-        //   without count badge: 16px (14+2) or 12px (8+4) for interrupted
-        //   with count badge: +12px for TextBlock (~10px text + 2px margin)
-        double width = 56;
-        int visibleGroups = 0;
-        if (workingCount > 0) { visibleGroups++; width += workingCount > 1 ? 28 : 16; }
-        if (waitingCount > 0) { visibleGroups++; width += waitingCount > 1 ? 28 : 16; }
-        if (completedCount > 0) { visibleGroups++; width += completedCount > 1 ? 28 : 16; }
-        if (interruptedCount > 0) { visibleGroups++; width += interruptedCount > 1 ? 24 : 12; }
-        if (visibleGroups > 1) width += (visibleGroups - 1) * 2;
-        return Math.Max(width, CollapsedWidthWithIcon);
-    }
-
-    private void ShowCollapsedIcon(BitmapImage icon)
-    {
-        CollapsedIcon.Source = icon;
-        if (!_iconVisible)
-        {
-            _iconVisible = true;
-            CollapsedIcon.Opacity = 0;
-            CollapsedIcon.Visibility = Visibility.Visible;
-
-            if (!_isExpanded)
-            {
-                Height = CollapsedHeightWithIcon;
-                // Width is set by UpdateCollapsedBar after all groups are configured
-            }
-
-            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                FillBehavior = FillBehavior.Stop
-            };
-            fadeIn.Completed += (_, _) => CollapsedIcon.Opacity = 1;
-            CollapsedIcon.BeginAnimation(OpacityProperty, fadeIn);
-        }
-    }
-
-    private void HideCollapsedIcon()
-    {
-        if (!_iconVisible) return;
-
-        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(250))
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
-            FillBehavior = FillBehavior.Stop
-        };
-        fadeOut.Completed += (_, _) =>
-        {
-            CollapsedIcon.Opacity = 1;
-            CollapsedIcon.Visibility = Visibility.Collapsed;
-            _iconVisible = false;
-
-            if (!_isExpanded)
-            {
-                Width = CollapsedWidth;
-                Height = CollapsedHeight;
-                PositionCenter();
-            }
-        };
-        CollapsedIcon.BeginAnimation(OpacityProperty, fadeOut);
-    }
-
     // --- UI event handlers ---
-
-    // --- Notch animations ---
-
-    private void StartSpinnerAnimation()
-    {
-        var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(800))
-        {
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-        SpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, spin);
-    }
-
-    private void StartPulseAnimation()
-    {
-        var pulse = new DoubleAnimation(0.7, 1.2, TimeSpan.FromMilliseconds(600))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase()
-        };
-        AlertPulse.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
-        AlertPulse.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
-    }
-
-    private void StopAnimations()
-    {
-        SpinnerRotate.BeginAnimation(RotateTransform.AngleProperty, null);
-        AlertPulse.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        AlertPulse.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-    }
 
     private void CollapsedBar_MouseEnter(object sender, MouseEventArgs e) => ExpandPanel();
     private void CollapsedBar_Click(object sender, MouseButtonEventArgs e)
@@ -662,7 +308,6 @@ public partial class FloatingPanel : Window
     private void ExpandedPanel_MouseEnter(object sender, MouseEventArgs e) { }
     private void ExpandedPanel_MouseLeave(object sender, MouseEventArgs e) { }
 
-
     private void DragBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 1) DragMove();
@@ -672,7 +317,6 @@ public partial class FloatingPanel : Window
     {
         base.OnKeyDown(e);
 
-        // Ctrl+Tab / Ctrl+Shift+Tab to cycle tabs
         if (e.Key == Key.Tab && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             var sessions = SessionStore.Instance.Sessions;
@@ -680,9 +324,7 @@ public partial class FloatingPanel : Window
 
             var currentIndex = -1;
             for (int i = 0; i < sessions.Count; i++)
-            {
                 if (sessions[i].IsActive) { currentIndex = i; break; }
-            }
 
             int next = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
                 ? (currentIndex - 1 + sessions.Count) % sessions.Count
@@ -697,7 +339,6 @@ public partial class FloatingPanel : Window
         {
             switch (e.Key)
             {
-                // Ctrl+S checkpoint disabled — Claude Code has built-in checkpoints
                 case Key.T:
                     var newSession = SessionStore.Instance.AddSession();
                     SessionStore.Instance.SelectSession(newSession.Id);
@@ -713,8 +354,6 @@ public partial class FloatingPanel : Window
         }
     }
 
-
-
     protected override void OnDrop(DragEventArgs e)
     {
         base.OnDrop(e);
@@ -727,14 +366,10 @@ public partial class FloatingPanel : Window
         {
             if (Directory.Exists(path))
             {
-                // Folder: create a new terminal session in that directory and switch to it
-                // Skip if a session with this path already exists
                 var existing = SessionStore.Instance.Sessions
                     .FirstOrDefault(s => string.Equals(s.ProjectPath, path, StringComparison.OrdinalIgnoreCase));
                 if (existing != null)
-                {
                     SessionStore.Instance.SelectSession(existing.Id);
-                }
                 else
                 {
                     var session = SessionStore.Instance.AddSession(Path.GetFileName(path), path, path);
@@ -744,7 +379,6 @@ public partial class FloatingPanel : Window
             }
             else if (File.Exists(path))
             {
-                // File: paste the file path into the active terminal
                 var activeId = SessionStore.Instance.ActiveSessionId;
                 if (activeId.HasValue && TerminalManager.Instance.HasTerminal(activeId.Value))
                 {
@@ -755,7 +389,6 @@ public partial class FloatingPanel : Window
         }
     }
 
-    /// <summary>Original OnDeactivated from main branch — with WebView2 focus-steal protection and pin support.</summary>
     protected override void OnDeactivated(EventArgs e)
     {
         base.OnDeactivated(e);
@@ -763,12 +396,9 @@ public partial class FloatingPanel : Window
         if (!_isExpanded || SessionStore.Instance.IsPinned || _isShowing)
             return;
 
-        // WebView2 hosts its own HWND. When focus moves into the embedded browser, the WPF window
-        // often deactivates even though the user is still interacting with the panel — do not auto-hide.
         Dispatcher.BeginInvoke(() =>
         {
-            if (SessionStore.Instance.IsPinned)
-                return;
+            if (SessionStore.Instance.IsPinned) return;
 
             try
             {
