@@ -89,6 +89,18 @@ public partial class SessionTabBar : UserControl
 
     private void ShowHintNow()
     {
+        // Don't show hint if tabs are using most of the available space —
+        // showing the hint would steal layout space, causing tabs to overflow,
+        // which hides the hint, freeing space, showing the hint again (oscillation).
+        // Use ExtentWidth (total tab content) vs ActualWidth (bar width) with a margin
+        // for the hint itself (~150px) to decide before affecting layout.
+        if (TabScrollViewer != null)
+        {
+            var spareSpace = TabScrollViewer.ActualWidth - TabScrollViewer.ExtentWidth;
+            if (spareSpace < 150)
+                return;
+        }
+
         HintText.Text = $"Tip: {Hints[_hintIndex]}";
         HintText.BeginAnimation(OpacityProperty, null);
         HintText.Opacity = 0;
@@ -402,7 +414,7 @@ public partial class SessionTabBar : UserControl
         ScrollRightBtn.Visibility = canScroll && TabScrollViewer.HorizontalOffset < TabScrollViewer.ScrollableWidth
             ? Visibility.Visible : Visibility.Collapsed;
 
-        // Tabs overflow → always hide hint; tabs fit → show if in visible phase
+        // Tabs overflow → always hide hint; tabs fit with room to spare → show if in visible phase
         var wasOverflow = _tabsOverflow;
         _tabsOverflow = canScroll;
 
@@ -415,7 +427,8 @@ public partial class SessionTabBar : UserControl
         }
         else if (!_tabsOverflow && wasOverflow && _hintVisible)
         {
-            // Tabs stopped overflowing and we're in the show phase — bring hint back
+            // Tabs stopped overflowing — only bring hint back if there's enough spare space
+            // (ShowHintNow checks this internally to avoid oscillation)
             ShowHintNow();
         }
     }
