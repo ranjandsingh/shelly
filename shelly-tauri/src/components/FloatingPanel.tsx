@@ -1,8 +1,8 @@
 import { useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { currentMonitor } from "@tauri-apps/api/window";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
+import { motion, AnimatePresence } from "framer-motion";
 import { Notch } from "./Notch";
 import { DragBar } from "./DragBar";
 import { TerminalSession } from "../hooks/useSessionStore";
@@ -17,7 +17,7 @@ interface FloatingPanelProps {
 }
 
 const NOTCH_WIDTH = 140;
-const NOTCH_HEIGHT = 32;
+const NOTCH_HEIGHT = 6;
 const DEFAULT_WIDTH = 720;
 const DEFAULT_HEIGHT = 400;
 
@@ -31,43 +31,44 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const appWindow = getCurrentWindow();
 
-  const positionCenter = useCallback(
+  const positionTopCenter = useCallback(
     async (width: number, height: number) => {
       const monitor = await currentMonitor();
       if (!monitor) return;
       const screenWidth = monitor.size.width / monitor.scaleFactor;
       const x = Math.round((screenWidth - width) / 2);
+      console.log(`[FloatingPanel] positioning: ${width}x${height} at x=${x}, y=0`);
       await appWindow.setSize(new LogicalSize(width, height));
       await appWindow.setPosition(new LogicalPosition(x, 0));
     },
     [appWindow]
   );
 
-  // Position and resize window based on expanded state
+  // Resize and position based on state
   useEffect(() => {
     const update = async () => {
       if (isExpanded) {
-        console.log("[FloatingPanel] expanding to", DEFAULT_WIDTH, DEFAULT_HEIGHT);
-        await positionCenter(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        console.log("[FloatingPanel] expanding");
+        await positionTopCenter(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         await appWindow.setResizable(true);
         await appWindow.show();
         await appWindow.setFocus();
       } else {
         console.log("[FloatingPanel] collapsing to notch");
         await appWindow.setResizable(false);
-        await positionCenter(NOTCH_WIDTH, NOTCH_HEIGHT);
+        await positionTopCenter(NOTCH_WIDTH, NOTCH_HEIGHT);
         await appWindow.show();
       }
     };
     update();
-  }, [isExpanded, positionCenter, appWindow]);
+  }, [isExpanded, positionTopCenter, appWindow]);
 
-  // Start collapsed (notch) on mount
+  // Start as notch on mount
   useEffect(() => {
     const init = async () => {
-      console.log("[FloatingPanel] init: showing notch");
+      console.log("[FloatingPanel] init");
       await appWindow.setResizable(false);
-      await positionCenter(NOTCH_WIDTH, NOTCH_HEIGHT);
+      await positionTopCenter(NOTCH_WIDTH, NOTCH_HEIGHT);
       await appWindow.show();
     };
     init();
@@ -83,13 +84,11 @@ export function FloatingPanel({
 
   if (!isExpanded) {
     return (
-      <div className="notch-container">
-        <Notch
-          sessions={sessions}
-          onMouseEnter={onExpand}
-          onClick={onExpand}
-        />
-      </div>
+      <Notch
+        sessions={sessions}
+        onMouseEnter={onExpand}
+        onClick={onExpand}
+      />
     );
   }
 
@@ -97,9 +96,9 @@ export function FloatingPanel({
     <AnimatePresence>
       <motion.div
         className="floating-panel"
-        initial={{ opacity: 0, scale: 0.93, y: -20 }}
+        initial={{ opacity: 0, scale: 0.96, y: -10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.9, y: -15 }}
+        exit={{ opacity: 0, scale: 0.96, y: -10 }}
         transition={{
           type: "spring",
           stiffness: 300,
