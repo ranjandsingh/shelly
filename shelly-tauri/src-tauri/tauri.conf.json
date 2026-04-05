@@ -17,12 +17,10 @@
         "width": 720,
         "height": 400,
         "decorations": false,
-        "transparent": false,
         "alwaysOnTop": true,
         "resizable": true,
         "visible": false,
-        "skipTaskbar": true,
-        "shadow": false
+        "skipTaskbar": true
       },
       {
         "label": "notch",
