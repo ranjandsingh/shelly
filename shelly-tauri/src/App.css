@@ -72,12 +72,12 @@ html, body, #root {
   display: flex;
   align-items: center;
   background: var(--tab-bar-bg);
-  height: 36px;
-  padding: 0 4px;
+  height: 38px;
+  padding: 0 8px 0 6px;
   flex-shrink: 0;
   user-select: none;
   -webkit-user-select: none;
-  gap: 2px;
+  gap: 4px;
 }
 
 .tab-bar-icon {
@@ -192,12 +192,13 @@ html, body, #root {
   color: #888;
   cursor: pointer;
   font-size: 14px;
-  padding: 4px 6px;
+  padding: 4px 8px;
   border-radius: 4px;
   flex-shrink: 0;
   line-height: 1;
+  margin: 0 1px;
 }
-.tab-bar-btn:hover { background: #2a2a2a; color: #e6e6e6; }
+.tab-bar-btn:hover { background: var(--tab-active-bg); color: var(--tab-active-text); }
 .tab-bar-btn.pinned { color: #4caf50; }
 
 /* Hint text */
@@ -207,7 +208,7 @@ html, body, #root {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 6px;
+  padding: 0 10px;
   opacity: 0;
   transition: opacity 0.3s;
   flex-shrink: 1;
