@@ -49,8 +49,7 @@ export function SessionTabBar({
   const [isPinned, setIsPinned] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showHints, setShowHints] = useState(true);
-  const [hint, setHint] = useState("");
-  const [hintVisible, setHintVisible] = useState(false);
+  const [hint, setHint] = useState(() => HINTS[Math.floor(Math.random() * HINTS.length)]);
   const [overflow, setOverflow] = useState(false);
   const hintIdx = useRef(Math.floor(Math.random() * HINTS.length));
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,23 +69,14 @@ export function SessionTabBar({
     return () => ro.disconnect();
   }, [sessions.length, checkOverflow]);
 
-  // --- Hint fade cycle (runs regardless of overflow) ---
+  // --- Rotate hint text every 12s (simple interval, no fade) ---
   useEffect(() => {
-    if (!showHints) { setHintVisible(false); return; }
-    let alive = true;
-    const cycle = async () => {
-      await sleep(1000);
-      while (alive) {
-        setHint(`Tip: ${HINTS[hintIdx.current]}`);
-        setHintVisible(true);
-        await sleep(6000);
-        setHintVisible(false);
-        hintIdx.current = (hintIdx.current + 1) % HINTS.length;
-        await sleep(8000);
-      }
-    };
-    cycle();
-    return () => { alive = false; };
+    if (!showHints) return;
+    const id = setInterval(() => {
+      hintIdx.current = (hintIdx.current + 1) % HINTS.length;
+      setHint(HINTS[hintIdx.current]);
+    }, 12000);
+    return () => clearInterval(id);
   }, [showHints]);
 
   // --- Close menu on outside click ---
@@ -142,9 +132,9 @@ export function SessionTabBar({
         <button className="tabbar-arrow" onClick={() => scrollBy(120)}>&#x276F;</button>
       )}
 
-      {/* Hint — fades in/out, hidden when overflow or user disabled */}
+      {/* Hint — visible unless user disabled or tabs overflow */}
       {showHints && !overflow && (
-        <span className={`tabbar-hint ${hintVisible ? "show" : ""}`}>{hint}</span>
+        <span className="tabbar-hint show">Tip: {hint}</span>
       )}
 
       {/* Right buttons */}
@@ -168,4 +158,3 @@ export function SessionTabBar({
   );
 }
 
-function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
