@@ -97,18 +97,34 @@ export function SessionTabBar({
 
   // Rotating hints — only when tabs don't overflow
   useEffect(() => {
-    const showHint = () => {
-      if (tabsOverflow) { setHintVisible(false); return; }
+    if (tabsOverflow) {
+      setHintVisible(false);
+      return;
+    }
+
+    let showTimeout: number | null = null;
+    let hideTimeout: number | null = null;
+
+    const cycle = () => {
       setHint(`Tip: ${HINTS[hintIndex.current]}`);
       setHintVisible(true);
-      setTimeout(() => {
+
+      hideTimeout = window.setTimeout(() => {
         setHintVisible(false);
         hintIndex.current = (hintIndex.current + 1) % HINTS.length;
+
+        showTimeout = window.setTimeout(cycle, 10000);
       }, 5000);
     };
-    showHint();
-    const interval = setInterval(showHint, 15000);
-    return () => clearInterval(interval);
+
+    // Delay first hint slightly to avoid flicker on mount
+    showTimeout = window.setTimeout(cycle, 1000);
+
+    return () => {
+      if (showTimeout) clearTimeout(showTimeout);
+      if (hideTimeout) clearTimeout(hideTimeout);
+      setHintVisible(false);
+    };
   }, [tabsOverflow]);
 
   // Close menu on outside click
