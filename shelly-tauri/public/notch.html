@@ -8,16 +8,25 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: #2d2d2d;
+    background: transparent;
     user-select: none;
     -webkit-user-select: none;
     cursor: pointer;
   }
   body {
     display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .pill {
+    display: flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
+    width: 100%;
+    height: 100%;
+    background: #2d2d2d;
+    border-radius: 0 0 8px 8px;
   }
   .greeting-wrap {
     display: flex;
@@ -30,9 +39,7 @@
   .greeting-wrap.hidden { max-width: 0; opacity: 0; }
   .greeting-icon { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
   .greeting-text {
-    color: #bbb;
-    font-size: 9px;
-    font-weight: 500;
+    color: #bbb; font-size: 9px; font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     white-space: nowrap;
   }
@@ -51,11 +58,13 @@
 </style>
 </head>
 <body>
-  <div class="greeting-wrap" id="greeting">
-    <img class="greeting-icon" src="icon.png" alt="">
-    <span class="greeting-text">Hello!</span>
+  <div class="pill">
+    <div class="greeting-wrap" id="greeting">
+      <img class="greeting-icon" src="icon.png" alt="">
+      <span class="greeting-text">Hello!</span>
+    </div>
+    <div class="dots" id="dots"></div>
   </div>
-  <div class="dots" id="dots"></div>
   <script>
     setTimeout(() => {
       document.getElementById('greeting').classList.add('hidden');

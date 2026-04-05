@@ -29,7 +29,7 @@
         "width": 80,
         "height": 14,
         "decorations": false,
-        "transparent": false,
+        "transparent": true,
         "alwaysOnTop": true,
         "resizable": false,
         "visible": true,
