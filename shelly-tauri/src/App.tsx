@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { TerminalView } from "./components/TerminalView";
 import { SessionTabBar } from "./components/SessionTabBar";
+import { FloatingPanel } from "./components/FloatingPanel";
 import { useSessionStore } from "./hooks/useSessionStore";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 function App() {
@@ -14,14 +15,38 @@ function App() {
     removeSession,
   } = useSessionStore();
 
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   );
 
-  useEffect(() => {
-    getCurrentWindow().show();
+  const togglePanel = useCallback(() => {
+    setIsExpanded((prev) => !prev);
   }, []);
+
+  const handleExpand = useCallback((_pin: boolean) => {
+    setIsExpanded(true);
+  }, []);
+
+  const handleCollapse = useCallback(() => {
+    setIsExpanded(false);
+  }, []);
+
+  // Listen for tray events
+  useEffect(() => {
+    const unlistenToggle = listen("tray-toggle-panel", () => {
+      togglePanel();
+    });
+    const unlistenNewSession = listen("tray-new-session", () => {
+      addSession();
+    });
+    return () => {
+      unlistenToggle.then((f) => f());
+      unlistenNewSession.then((f) => f());
+    };
+  }, [addSession, togglePanel]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -52,19 +77,26 @@ function App() {
   }, [sessions, activeSessionId, addSession, selectSession, removeSession]);
 
   return (
-    <div className="app">
-      <SessionTabBar
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSelect={selectSession}
-        onAdd={() => addSession()}
-        onClose={removeSession}
-      />
-      <TerminalView
-        sessionId={activeSessionId}
-        workingDirectory={activeSession?.workingDirectory}
-      />
-    </div>
+    <FloatingPanel
+      sessions={sessions}
+      isExpanded={isExpanded}
+      onExpand={handleExpand}
+      onCollapse={handleCollapse}
+    >
+      <div className="app-content">
+        <SessionTabBar
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelect={selectSession}
+          onAdd={() => addSession()}
+          onClose={removeSession}
+        />
+        <TerminalView
+          sessionId={activeSessionId}
+          workingDirectory={activeSession?.workingDirectory}
+        />
+      </div>
+    </FloatingPanel>
   );
 }
 
