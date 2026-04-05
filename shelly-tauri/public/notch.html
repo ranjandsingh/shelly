@@ -12,6 +12,7 @@
     user-select: none;
     -webkit-user-select: none;
     cursor: pointer;
+    transition: background 0.3s;
   }
   body {
     display: flex;
@@ -19,8 +20,10 @@
     justify-content: center;
     gap: 6px;
   }
+  body.shrunk {
+    background: #333;
+  }
 
-  /* Greeting */
   .greeting-wrap {
     display: flex;
     align-items: center;
@@ -47,15 +50,14 @@
     white-space: nowrap;
   }
 
-  /* Status dots */
   .dots {
     display: flex;
-    gap: 4px;
+    gap: 3px;
     align-items: center;
   }
   .dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: #555;
   }
@@ -65,9 +67,9 @@
   .dot.interrupted { background: #ef5350; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spinner {
-    width: 8px;
-    height: 8px;
-    border: 1.5px solid transparent;
+    width: 5px;
+    height: 5px;
+    border: 1px solid transparent;
     border-top-color: #ffa726;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -82,9 +84,18 @@
   <div class="dots" id="dots"></div>
 
   <script>
-    // Hide greeting after 3s
+    let isShrunk = false;
+
+    // After 3s, hide greeting and shrink notch via Rust
     setTimeout(() => {
       document.getElementById('greeting').classList.add('hidden');
+      setTimeout(() => {
+        if (window.__TAURI__) {
+          window.__TAURI__.core.invoke('shrink_notch');
+          document.body.classList.add('shrunk');
+          isShrunk = true;
+        }
+      }, 500); // wait for CSS transition
     }, 3000);
 
     // Click -> toggle panel
@@ -92,15 +103,26 @@
       if (window.__TAURI__) window.__TAURI__.core.invoke('toggle_panel');
     });
 
-    // Hover -> show panel
+    // Hover -> expand notch back to full size, then show panel
     let hoverTimer = null;
     document.body.addEventListener('mouseenter', () => {
+      if (isShrunk && window.__TAURI__) {
+        window.__TAURI__.core.invoke('expand_notch');
+        document.body.classList.remove('shrunk');
+      }
       hoverTimer = setTimeout(() => {
         if (window.__TAURI__) window.__TAURI__.core.invoke('show_panel');
-      }, 250);
+      }, 300);
     });
     document.body.addEventListener('mouseleave', () => {
       if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      // Shrink back if panel isn't visible
+      if (isShrunk && window.__TAURI__) {
+        setTimeout(() => {
+          window.__TAURI__.core.invoke('shrink_notch');
+          document.body.classList.add('shrunk');
+        }, 500);
+      }
     });
 
     // Status updates

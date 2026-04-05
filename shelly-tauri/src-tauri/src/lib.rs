@@ -245,6 +245,34 @@ fn quit_shelly(app: AppHandle) {
 }
 
 #[tauri::command]
+fn shrink_notch(app: AppHandle) {
+    log::info!("CMD shrink_notch");
+    if let Some(notch) = app.get_webview_window("notch") {
+        // Shrink to tiny pill
+        let _ = notch.set_size(tauri::LogicalSize::new(50.0, 8.0));
+        // Re-center
+        if let Ok(Some(monitor)) = app.primary_monitor() {
+            let sw = monitor.size().width as f64 / monitor.scale_factor();
+            let x = ((sw - 50.0) / 2.0) as i32;
+            let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+        }
+    }
+}
+
+#[tauri::command]
+fn expand_notch(app: AppHandle) {
+    log::info!("CMD expand_notch");
+    if let Some(notch) = app.get_webview_window("notch") {
+        let _ = notch.set_size(tauri::LogicalSize::new(100.0, 24.0));
+        if let Ok(Some(monitor)) = app.primary_monitor() {
+            let sw = monitor.size().width as f64 / monitor.scale_factor();
+            let x = ((sw - 100.0) / 2.0) as i32;
+            let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+        }
+    }
+}
+
+#[tauri::command]
 fn position_panel_center(app: AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if let Ok(Some(monitor)) = app.primary_monitor() {
@@ -422,6 +450,8 @@ pub fn run() {
             hide_panel,
             set_pinned,
             get_pinned,
+            shrink_notch,
+            expand_notch,
             quit_shelly,
             position_panel_center,
             set_auto_start_cmd,
