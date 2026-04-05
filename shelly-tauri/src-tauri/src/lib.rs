@@ -1,4 +1,5 @@
 mod pty;
+mod session_store;
 mod shell_detect;
 
 use std::sync::Mutex;
@@ -6,12 +7,16 @@ use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 use pty::PtyManager;
+use session_store::{SessionStore, TerminalSession};
 use shell_detect::{ShellInfo, detect_default_shell, get_available_shells};
 
 struct AppState {
     pty_manager: PtyManager,
+    session_store: SessionStore,
     default_shell: Mutex<String>,
 }
+
+// --- Terminal commands ---
 
 #[tauri::command]
 fn create_terminal(
@@ -24,6 +29,7 @@ fn create_terminal(
 ) -> Result<(), String> {
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let shell = state.default_shell.lock().unwrap().clone();
+    state.session_store.set_session_started(&session_id);
     state.pty_manager.create(id, &working_dir, &shell, cols, rows, app)
 }
 
@@ -65,6 +71,53 @@ fn has_terminal(session_id: String, state: State<'_, AppState>) -> bool {
         .unwrap_or(false)
 }
 
+// --- Session commands ---
+
+#[tauri::command]
+fn get_sessions(state: State<'_, AppState>) -> Vec<TerminalSession> {
+    state.session_store.get_sessions()
+}
+
+#[tauri::command]
+fn get_active_session_id(state: State<'_, AppState>) -> Option<String> {
+    state.session_store.get_active_session_id()
+}
+
+#[tauri::command]
+fn add_session(
+    name: Option<String>,
+    project_path: Option<String>,
+    working_dir: Option<String>,
+    state: State<'_, AppState>,
+) -> TerminalSession {
+    state.session_store.add_session(name, project_path, working_dir)
+}
+
+#[tauri::command]
+fn select_session(session_id: String, state: State<'_, AppState>) {
+    state.session_store.select_session(&session_id);
+}
+
+#[tauri::command]
+fn remove_session(session_id: String, state: State<'_, AppState>) -> Option<String> {
+    if let Ok(id) = Uuid::parse_str(&session_id) {
+        state.pty_manager.destroy(id);
+    }
+    state.session_store.remove_session(&session_id)
+}
+
+#[tauri::command]
+fn rename_session(session_id: String, name: String, state: State<'_, AppState>) {
+    state.session_store.rename_session(&session_id, &name);
+}
+
+#[tauri::command]
+fn get_session(session_id: String, state: State<'_, AppState>) -> Option<TerminalSession> {
+    state.session_store.get_session(&session_id)
+}
+
+// --- Shell commands ---
+
 #[tauri::command]
 fn get_available_shells_cmd() -> Vec<ShellInfo> {
     get_available_shells()
@@ -87,9 +140,13 @@ pub fn run() {
     let default_shell = detect_default_shell();
     log::info!("Default shell: {default_shell}");
 
+    let session_store = SessionStore::new();
+    session_store.ensure_default_session();
+
     tauri::Builder::default()
         .manage(AppState {
             pty_manager: PtyManager::new(),
+            session_store,
             default_shell: Mutex::new(default_shell),
         })
         .plugin(tauri_plugin_opener::init())
@@ -110,6 +167,13 @@ pub fn run() {
             suppress_live_output,
             destroy_terminal,
             has_terminal,
+            get_sessions,
+            get_active_session_id,
+            add_session,
+            select_session,
+            remove_session,
+            rename_session,
+            get_session,
             get_available_shells_cmd,
             get_default_shell,
             set_default_shell,
