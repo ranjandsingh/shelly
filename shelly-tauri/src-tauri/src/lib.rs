@@ -181,9 +181,19 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
     // Suppress blur-hide while dialog is open
     *state.dialog_open.lock().unwrap() = true;
 
+    // Temporarily disable alwaysOnTop so the dialog appears above the panel
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.set_always_on_top(false);
+    }
+
     let folder = app.dialog().file()
         .set_title("Select folder for new terminal session")
         .blocking_pick_folder();
+
+    // Restore alwaysOnTop
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.set_always_on_top(true);
+    }
 
     *state.dialog_open.lock().unwrap() = false;
 
