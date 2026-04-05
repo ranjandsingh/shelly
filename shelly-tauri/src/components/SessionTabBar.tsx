@@ -24,16 +24,14 @@ const HINTS = [
   "Ctrl+T opens a new session",
   "Ctrl+W closes current tab",
   "Drag the top bar to move",
-  "Customize hotkey in Settings",
-  "Auto-expands when Claude asks",
 ];
 
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  Idle: <span className="status-dot idle" />,
-  Working: <span className="status-spinner" />,
-  WaitingForInput: <span className="status-triangle" />,
-  TaskCompleted: <span className="status-check">&#x2713;</span>,
-  Interrupted: <span className="status-dot interrupted" />,
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  Idle: <span className="st-dot" />,
+  Working: <span className="st-spin" />,
+  WaitingForInput: <span className="st-tri" />,
+  TaskCompleted: <span className="st-chk">&#x2713;</span>,
+  Interrupted: <span className="st-dot red" />,
 };
 
 export function SessionTabBar({
@@ -51,181 +49,106 @@ export function SessionTabBar({
   const [isPinned, setIsPinned] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [hint, setHint] = useState("");
-  const [hintVisible, setHintVisible] = useState(false);
-  const [tabsOverflow, setTabsOverflow] = useState(false);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  const hintIndex = useRef(Math.floor(Math.random() * HINTS.length));
+  const [hintShown, setHintShown] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  const hintIdx = useRef(Math.floor(Math.random() * HINTS.length));
   const menuRef = useRef<HTMLDivElement>(null);
-  const tabListRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Check if tabs overflow
+  // --- Overflow detection ---
   const checkOverflow = useCallback(() => {
-    const el = tabListRef.current;
+    const el = scrollRef.current;
     if (!el) return;
-    const overflows = el.scrollWidth > el.clientWidth + 2;
-    setTabsOverflow(overflows);
-    setCanScrollLeft(el.scrollLeft > 0);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    setOverflow(el.scrollWidth > el.clientWidth + 4);
   }, []);
 
-  // Re-check overflow on session changes and resize
   useEffect(() => {
     checkOverflow();
-    const observer = new ResizeObserver(checkOverflow);
-    if (tabListRef.current) observer.observe(tabListRef.current);
-    return () => observer.disconnect();
-  }, [sessions, checkOverflow]);
+    const ro = new ResizeObserver(checkOverflow);
+    if (scrollRef.current) ro.observe(scrollRef.current);
+    return () => ro.disconnect();
+  }, [sessions.length, checkOverflow]);
 
-  // Scroll tabs with mouse wheel
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    const el = tabListRef.current;
-    if (!el) return;
-    el.scrollLeft += e.deltaY > 0 ? 80 : -80;
-    checkOverflow();
-  }, [checkOverflow]);
-
-  const scrollLeft = () => {
-    const el = tabListRef.current;
-    if (el) { el.scrollLeft -= 120; checkOverflow(); }
-  };
-
-  const scrollRight = () => {
-    const el = tabListRef.current;
-    if (el) { el.scrollLeft += 120; checkOverflow(); }
-  };
-
-  // Rotating hints — only when tabs don't overflow
+  // --- Hints (only when no overflow) ---
   useEffect(() => {
-    if (tabsOverflow) {
-      setHintVisible(false);
-      return;
-    }
-
-    let showTimeout: number | null = null;
-    let hideTimeout: number | null = null;
-
-    const cycle = () => {
-      setHint(`Tip: ${HINTS[hintIndex.current]}`);
-      setHintVisible(true);
-
-      hideTimeout = window.setTimeout(() => {
-        setHintVisible(false);
-        hintIndex.current = (hintIndex.current + 1) % HINTS.length;
-
-        showTimeout = window.setTimeout(cycle, 10000);
-      }, 5000);
-    };
-
-    // Delay first hint slightly to avoid flicker on mount
-    showTimeout = window.setTimeout(cycle, 1000);
-
-    return () => {
-      if (showTimeout) clearTimeout(showTimeout);
-      if (hideTimeout) clearTimeout(hideTimeout);
-      setHintVisible(false);
-    };
-  }, [tabsOverflow]);
-
-  // Close menu on outside click
-  useEffect(() => {
-    if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
+    if (overflow) { setHintShown(false); return; }
+    let alive = true;
+    const run = async () => {
+      await sleep(2000);
+      while (alive) {
+        setHint(`Tip: ${HINTS[hintIdx.current]}`);
+        setHintShown(true);
+        await sleep(5000);
+        setHintShown(false);
+        hintIdx.current = (hintIdx.current + 1) % HINTS.length;
+        await sleep(10000);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    run();
+    return () => { alive = false; setHintShown(false); };
+  }, [overflow]);
+
+  // --- Close menu on outside click ---
+  useEffect(() => {
+    if (!showMenu) return;
+    const h = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, [showMenu]);
 
-  const handlePin = async () => {
-    const next = !isPinned;
-    setIsPinned(next);
-    await invoke("set_pinned", { pinned: next });
-  };
-
-  const handleOpenFolder = async () => {
-    try {
-      await invoke("pick_folder");
-      onRefresh();
-    } catch (e) {
-      console.error("[SessionTabBar] pick_folder error:", e);
-    }
+  // --- Scroll ---
+  const scrollBy = (dx: number) => {
+    scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
   };
 
   return (
-    <div className="session-tab-bar">
-      <div className="tab-bar-icon">
-        <img src="/icon.png" alt="" className="app-icon-img" />
-      </div>
+    <div className="tabbar">
+      {/* Left: icon */}
+      <img src="/icon.png" alt="" className="tabbar-icon" />
 
-      {/* Scroll left arrow */}
-      {canScrollLeft && (
-        <button className="tab-scroll-btn" onClick={scrollLeft} title="Scroll tabs left">
-          &#x276E;
-        </button>
+      {/* Left scroll arrow */}
+      {overflow && (
+        <button className="tabbar-arrow" onClick={() => scrollBy(-120)}>&#x276E;</button>
       )}
 
-      {/* Scrollable tabs */}
+      {/* Tabs (scrollable) */}
       <div
-        className="tab-list"
-        ref={tabListRef}
-        onWheel={handleWheel}
-        onScroll={checkOverflow}
+        className="tabbar-scroll"
+        ref={scrollRef}
+        onWheel={(e) => { scrollRef.current!.scrollLeft += e.deltaY > 0 ? 60 : -60; }}
       >
         {sessions.map((s) => (
           <div
             key={s.id}
-            className={`tab ${s.id === activeSessionId ? "active" : ""}`}
+            className={`tabbar-tab ${s.id === activeSessionId ? "active" : ""}`}
             onClick={() => onSelect(s.id)}
           >
-            {STATUS_ICONS[s.status] || STATUS_ICONS.Idle}
-            <span className="tab-name">{s.projectName}</span>
+            {STATUS_ICON[s.status] || STATUS_ICON.Idle}
+            <span className="tabbar-tab-name">{s.projectName}</span>
             {sessions.length > 1 && (
-              <button
-                className="tab-close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose(s.id);
-                }}
-                title="Close tab"
-              >
-                &#x2715;
-              </button>
+              <button className="tabbar-tab-x" onClick={(e) => { e.stopPropagation(); onClose(s.id); }}>&#x2715;</button>
             )}
           </div>
         ))}
-        <button className="tab-bar-btn tab-add-btn" onClick={onAdd} title="New session">+</button>
+        {/* + button inside scroll area so it's always after the last tab */}
+        <button className="tabbar-btn plus" onClick={onAdd} title="New session (Ctrl+T)">+</button>
       </div>
 
-      {/* Scroll right arrow */}
-      {canScrollRight && (
-        <button className="tab-scroll-btn" onClick={scrollRight} title="Scroll tabs right">
-          &#x276F;
-        </button>
+      {/* Right scroll arrow */}
+      {overflow && (
+        <button className="tabbar-arrow" onClick={() => scrollBy(120)}>&#x276F;</button>
       )}
 
-      {/* Hint text — hidden when tabs overflow */}
-      {!tabsOverflow && (
-        <div className={`hint-text ${hintVisible ? "visible" : ""}`}>{hint}</div>
-      )}
+      {/* Hint (only when not overflowing) */}
+      {!overflow && <span className={`tabbar-hint ${hintShown ? "show" : ""}`}>{hint}</span>}
 
-      {/* Right-side buttons */}
-      <button className="tab-bar-btn" onClick={handleOpenFolder} title="Open folder">
-        &#x1F4C2;
-      </button>
-      <button
-        className={`tab-bar-btn ${isPinned ? "pinned" : ""}`}
-        onClick={handlePin}
-        title={isPinned ? "Unpin" : "Pin panel"}
-      >
-        &#x1F4CC;
-      </button>
-      <div className="menu-container" ref={menuRef}>
-        <button className="tab-bar-btn" onClick={() => setShowMenu(!showMenu)} title="Menu">
-          &#x22EE;
-        </button>
+      {/* Right buttons */}
+      <button className="tabbar-btn" onClick={async () => { try { await invoke("pick_folder"); onRefresh(); } catch {} }} title="Open folder">&#x1F4C2;</button>
+      <button className={`tabbar-btn ${isPinned ? "on" : ""}`} onClick={async () => { const n = !isPinned; setIsPinned(n); await invoke("set_pinned", { pinned: n }); }} title={isPinned ? "Unpin" : "Pin"}>&#x1F4CC;</button>
+      <div className="tabbar-menu-wrap" ref={menuRef}>
+        <button className="tabbar-btn" onClick={() => setShowMenu(!showMenu)} title="Menu">&#x22EE;</button>
         {showMenu && (
           <SettingsMenu
             onClose={() => setShowMenu(false)}
@@ -239,3 +162,5 @@ export function SessionTabBar({
     </div>
   );
 }
+
+function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
