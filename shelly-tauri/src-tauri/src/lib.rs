@@ -1,9 +1,10 @@
 mod pty;
 mod session_store;
 mod shell_detect;
+mod tray;
 
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 use pty::PtyManager;
@@ -151,7 +152,17 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(
-            tauri_plugin_global_shortcut::Builder::new().build(),
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        let _ = app.emit("tray-toggle-panel", ());
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
@@ -159,6 +170,17 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }))
+        .setup(|app| {
+            tray::setup_tray(app.handle())?;
+
+            // Register default hotkey: CmdOrCtrl+`
+            use tauri_plugin_global_shortcut::GlobalShortcutExt;
+            if let Err(e) = app.global_shortcut().register("CmdOrCtrl+`") {
+                log::warn!("Failed to register global shortcut: {e}");
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             create_terminal,
             write_input,
