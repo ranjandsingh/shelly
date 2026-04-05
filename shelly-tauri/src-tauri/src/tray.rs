@@ -16,14 +16,17 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("Shelly")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "new_session" => {
-                let _ = app.emit("tray-new-session", ());
+        .on_menu_event(|app, event| {
+            log::info!("TRAY: menu event: {}", event.id.as_ref());
+            match event.id.as_ref() {
+                "new_session" => {
+                    let _ = app.emit("tray-new-session", ());
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
             }
-            "quit" => {
-                app.exit(0);
-            }
-            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -32,8 +35,8 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 ..
             } = event
             {
+                log::info!("TRAY: left click - emitting toggle");
                 let app = tray.app_handle();
-                // Let the frontend handle the toggle logic
                 let _ = app.emit("tray-toggle-panel", ());
             }
         })

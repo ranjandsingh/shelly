@@ -37,14 +37,17 @@ fn create_terminal(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
+    log::info!("CMD create_terminal: session={session_id}, dir={working_dir}, {cols}x{rows}");
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let shell = state.default_shell.lock().unwrap().clone();
+    log::info!("CMD create_terminal: using shell={shell}");
     state.session_store.set_session_started(&session_id);
     state.pty_manager.create(id, &working_dir, &shell, cols, rows, app)
 }
 
 #[tauri::command]
 fn write_input(session_id: String, data: String, state: State<'_, AppState>) -> Result<(), String> {
+    log::debug!("CMD write_input: session={session_id}, len={}", data.len());
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     state.pty_manager.write_input(id, data.as_bytes())
 }
@@ -85,7 +88,9 @@ fn has_terminal(session_id: String, state: State<'_, AppState>) -> bool {
 
 #[tauri::command]
 fn get_sessions(state: State<'_, AppState>) -> Vec<TerminalSession> {
-    state.session_store.get_sessions()
+    let sessions = state.session_store.get_sessions();
+    log::debug!("CMD get_sessions: returning {} sessions", sessions.len());
+    sessions
 }
 
 #[tauri::command]
@@ -100,16 +105,21 @@ fn add_session(
     working_dir: Option<String>,
     state: State<'_, AppState>,
 ) -> TerminalSession {
-    state.session_store.add_session(name, project_path, working_dir)
+    log::info!("CMD add_session: name={:?}, path={:?}, dir={:?}", name, project_path, working_dir);
+    let session = state.session_store.add_session(name, project_path, working_dir);
+    log::info!("CMD add_session: created id={}", session.id);
+    session
 }
 
 #[tauri::command]
 fn select_session(session_id: String, state: State<'_, AppState>) {
+    log::info!("CMD select_session: {session_id}");
     state.session_store.select_session(&session_id);
 }
 
 #[tauri::command]
 fn remove_session(session_id: String, state: State<'_, AppState>) -> Option<String> {
+    log::info!("CMD remove_session: {session_id}");
     if let Ok(id) = Uuid::parse_str(&session_id) {
         state.pty_manager.destroy(id);
     }
@@ -201,8 +211,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
+                    log::info!("HOTKEY: {:?} state={:?}", shortcut, event.state);
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        log::info!("HOTKEY: emitting tray-toggle-panel");
                         let _ = app.emit("tray-toggle-panel", ());
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -219,14 +231,20 @@ pub fn run() {
             }
         }))
         .setup(|app| {
+            log::info!("SETUP: initializing tray...");
             tray::setup_tray(app.handle())?;
+            log::info!("SETUP: tray initialized");
 
             // Register default hotkey: CmdOrCtrl+`
+            log::info!("SETUP: registering global shortcut CmdOrCtrl+`...");
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             if let Err(e) = app.global_shortcut().register("CmdOrCtrl+`") {
-                log::warn!("Failed to register global shortcut: {e}");
+                log::warn!("SETUP: Failed to register global shortcut: {e}");
+            } else {
+                log::info!("SETUP: global shortcut registered");
             }
 
+            log::info!("SETUP: complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

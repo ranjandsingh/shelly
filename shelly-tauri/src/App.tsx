@@ -26,6 +26,7 @@ function App() {
   const togglePanel = useCallback(() => {
     setIsExpanded((prev) => {
       const next = !prev;
+      console.log(`[App] togglePanel: ${prev} -> ${next}`);
       const win = getCurrentWindow();
       if (next) {
         win.show();
@@ -43,10 +44,13 @@ function App() {
 
   // Listen for tray/hotkey events
   useEffect(() => {
+    console.log("[App] setting up tray event listeners");
     const unlistenToggle = listen("tray-toggle-panel", () => {
+      console.log("[App] received tray-toggle-panel event");
       togglePanel();
     });
     const unlistenNewSession = listen("tray-new-session", () => {
+      console.log("[App] received tray-new-session event");
       addSession();
     });
     return () => {
@@ -62,16 +66,19 @@ function App() {
       if (!mod) return;
 
       if (e.key === "t") {
+        console.log("[App] Ctrl+T: new session");
         e.preventDefault();
         e.stopPropagation();
         addSession();
       } else if (e.key === "w") {
+        console.log("[App] Ctrl+W: close session");
         e.preventDefault();
         e.stopPropagation();
         if (activeSessionId && sessions.length > 1) {
           removeSession(activeSessionId);
         }
       } else if (e.key === "Tab") {
+        console.log("[App] Ctrl+Tab: cycle session");
         e.preventDefault();
         e.stopPropagation();
         if (sessions.length < 2) return;

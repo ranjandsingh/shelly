@@ -101,9 +101,13 @@ export function useTerminal(
   // Attach to session
   const attachSession = useCallback(
     async (newSessionId: string, workDir: string) => {
+      console.log(`[useTerminal] attachSession: ${newSessionId}, workDir=${workDir}`);
       const term = termRef.current;
       const fitAddon = fitAddonRef.current;
-      if (!term || !fitAddon) return;
+      if (!term || !fitAddon) {
+        console.warn("[useTerminal] attachSession: term or fitAddon not ready");
+        return;
+      }
 
       // Cleanup previous listener
       if (unlistenRef.current) {
@@ -114,6 +118,7 @@ export function useTerminal(
       currentSessionRef.current = newSessionId;
 
       const exists = await checkHasTerminal(newSessionId);
+      console.log(`[useTerminal] hasTerminal=${exists}`);
 
       if (exists) {
         // Existing terminal: replay buffer

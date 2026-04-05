@@ -35,18 +35,22 @@ export function FloatingPanel({
 
   // When isExpanded changes, resize and position the window
   useEffect(() => {
+    console.log(`[FloatingPanel] isExpanded changed: ${isExpanded}`);
     if (isExpanded) {
       positionCenter(DEFAULT_WIDTH, DEFAULT_HEIGHT).then(() => {
+        console.log("[FloatingPanel] positioned, showing window");
         appWindow.show();
         appWindow.setFocus();
       });
     } else {
+      console.log("[FloatingPanel] hiding window");
       appWindow.hide();
     }
   }, [isExpanded, positionCenter, appWindow]);
 
   // Show window on first mount in expanded state
   useEffect(() => {
+    console.log("[FloatingPanel] mounted, expanding");
     onExpand(true);
   }, []);
 
