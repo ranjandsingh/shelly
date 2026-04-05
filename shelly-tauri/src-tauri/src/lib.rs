@@ -1,6 +1,8 @@
 mod pty;
 mod session_store;
 mod shell_detect;
+mod sleep_prevention;
+mod sound;
 mod status_parser;
 mod tray;
 
