@@ -171,6 +171,69 @@ fn get_session(session_id: String, state: State<'_, AppState>) -> Option<Termina
     state.session_store.get_session(&session_id)
 }
 
+// --- File/folder commands ---
+
+#[tauri::command]
+async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Option<session_store::TerminalSession>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let folder = app.dialog().file()
+        .set_title("Select folder for new terminal session")
+        .blocking_pick_folder();
+
+    if let Some(path) = folder {
+        let path_str = path.to_string();
+        let folder_name = std::path::Path::new(&path_str)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path_str.clone());
+        let session = state.session_store.add_session(
+            Some(folder_name),
+            Some(path_str.clone()),
+            Some(path_str),
+        );
+        log::info!("CMD pick_folder: created session {} for {}", session.id, session.working_directory);
+        do_show_panel(&app);
+        Ok(Some(session))
+    } else {
+        Ok(None)
+    }
+}
+
+fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        for path in paths {
+            let path_str = path.to_string_lossy().into_owned();
+            if path.is_dir() {
+                let folder_name = path.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path_str.clone());
+                let session = state.session_store.add_session(
+                    Some(folder_name),
+                    Some(path_str.clone()),
+                    Some(path_str),
+                );
+                state.session_store.select_session(&session.id);
+                log::info!("DROP: created session for dir {}", session.working_directory);
+                do_show_panel(app);
+                let _ = app.emit("sessions-force-refresh", ());
+            } else if path.is_file() {
+                if let Some(active_id) = state.session_store.get_active_session_id() {
+                    if let Ok(id) = uuid::Uuid::parse_str(&active_id) {
+                        let quoted = if path_str.contains(' ') {
+                            format!("\"{}\"", path_str)
+                        } else {
+                            path_str.clone()
+                        };
+                        let _ = state.pty_manager.write_input(id, quoted.as_bytes());
+                        log::info!("DROP: pasted file path into active terminal");
+                    }
+                }
+            }
+        }
+    }
+}
+
 // --- Status commands ---
 
 #[tauri::command]
@@ -323,6 +386,7 @@ pub fn run() {
             hide_cooldown: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -424,6 +488,23 @@ pub fn run() {
                 log::info!("SETUP: global shortcut registered");
             }
 
+            // Drag-drop on both windows handled via the global drag-drop event listener
+            let h_drop = app.handle().clone();
+            app.listen("tauri://drag-drop", move |event| {
+                // Parse the payload for paths
+                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    if let Some(paths) = payload.get("paths").and_then(|p| p.as_array()) {
+                        let path_bufs: Vec<std::path::PathBuf> = paths.iter()
+                            .filter_map(|p| p.as_str().map(std::path::PathBuf::from))
+                            .collect();
+                        if !path_bufs.is_empty() {
+                            log::info!("DROP: {} paths received", path_bufs.len());
+                            handle_dropped_paths(&path_bufs, &h_drop);
+                        }
+                    }
+                }
+            });
+
             log::info!("SETUP: complete");
             Ok(())
         })
@@ -442,6 +523,7 @@ pub fn run() {
             remove_session,
             rename_session,
             get_session,
+            pick_folder,
             parse_visible_text,
             get_settings,
             save_app_settings,

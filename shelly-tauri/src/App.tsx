@@ -14,6 +14,7 @@ function App() {
     addSession,
     selectSession,
     removeSession,
+    refresh,
   } = useSessionStore();
 
   const [_isVisible, setIsVisible] = useState(false);
@@ -32,6 +33,12 @@ function App() {
     getCurrentWindow().isVisible().then(setIsVisible);
     return () => { unlisten.then((f) => f()); };
   }, []);
+
+  // Listen for session refresh from Rust (e.g. after drag-drop creates session)
+  useEffect(() => {
+    const unlisten = listen("sessions-force-refresh", () => { refresh(); });
+    return () => { unlisten.then((f) => f()); };
+  }, [refresh]);
 
   // Keyboard shortcuts — capture phase to intercept before xterm
   useEffect(() => {

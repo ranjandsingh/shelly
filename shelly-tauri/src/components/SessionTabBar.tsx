@@ -78,9 +78,15 @@ export function SessionTabBar({
   };
 
   const handleOpenFolder = async () => {
-    // TODO: Tauri file dialog for folder selection
-    // For now, create a new session
-    onAdd();
+    try {
+      const result = await invoke("pick_folder");
+      if (result) {
+        // Session was created by Rust, refresh our list
+        // The refresh happens via the sessions-updated event or manual refresh
+      }
+    } catch (e) {
+      console.error("[SessionTabBar] pick_folder error:", e);
+    }
   };
 
   return (
