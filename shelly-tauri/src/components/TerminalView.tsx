@@ -5,11 +5,13 @@ import "xterm/css/xterm.css";
 interface TerminalViewProps {
   sessionId: string | null;
   workingDirectory?: string;
+  theme?: any;
+  fontSize?: number;
 }
 
-export function TerminalView({ sessionId, workingDirectory }: TerminalViewProps) {
+export function TerminalView({ sessionId, workingDirectory, theme, fontSize }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  useTerminal(containerRef, sessionId, workingDirectory);
+  useTerminal(containerRef, sessionId, workingDirectory, theme, fontSize);
 
   return (
     <div
@@ -17,7 +19,6 @@ export function TerminalView({ sessionId, workingDirectory }: TerminalViewProps)
       style={{
         width: "100%",
         height: "100%",
-        background: "#1a1a1a",
         paddingLeft: 6,
         flex: 1,
         minHeight: 0,

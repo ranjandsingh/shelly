@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalSession } from "../hooks/useSessionStore";
+import { SettingsMenu } from "./SettingsMenu";
 
 interface SessionTabBarProps {
   sessions: TerminalSession[];
@@ -8,6 +9,10 @@ interface SessionTabBarProps {
   onSelect: (id: string) => void;
   onAdd: () => void;
   onClose: (id: string) => void;
+  currentTheme: string;
+  currentFontSize: number;
+  onThemeChange: (themeId: string) => void;
+  onFontSizeChange: (size: number) => void;
 }
 
 const HINTS = [
@@ -36,6 +41,10 @@ export function SessionTabBar({
   onSelect,
   onAdd,
   onClose,
+  currentTheme,
+  currentFontSize,
+  onThemeChange,
+  onFontSizeChange,
 }: SessionTabBarProps) {
   const [isPinned, setIsPinned] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -44,7 +53,6 @@ export function SessionTabBar({
   const hintIndex = useRef(Math.floor(Math.random() * HINTS.length));
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Rotating hints
   useEffect(() => {
     const showHint = () => {
       setHint(`Tip: ${HINTS[hintIndex.current]}`);
@@ -59,7 +67,6 @@ export function SessionTabBar({
     return () => clearInterval(interval);
   }, []);
 
-  // Close menu on outside click
   useEffect(() => {
     if (!showMenu) return;
     const handler = (e: MouseEvent) => {
@@ -79,11 +86,7 @@ export function SessionTabBar({
 
   const handleOpenFolder = async () => {
     try {
-      const result = await invoke("pick_folder");
-      if (result) {
-        // Session was created by Rust, refresh our list
-        // The refresh happens via the sessions-updated event or manual refresh
-      }
+      await invoke("pick_folder");
     } catch (e) {
       console.error("[SessionTabBar] pick_folder error:", e);
     }
@@ -91,12 +94,10 @@ export function SessionTabBar({
 
   return (
     <div className="session-tab-bar">
-      {/* App icon */}
       <div className="tab-bar-icon">
         <img src="/icon.png" alt="" className="app-icon-img" />
       </div>
 
-      {/* Scrollable tabs */}
       <div className="tab-list">
         {sessions.map((s) => (
           <div
@@ -120,89 +121,34 @@ export function SessionTabBar({
             )}
           </div>
         ))}
-        <button className="tab-bar-btn" onClick={onAdd} title="New session">
-          +
-        </button>
+        <button className="tab-bar-btn" onClick={onAdd} title="New session">+</button>
       </div>
 
-      {/* Hint text */}
-      <div className={`hint-text ${hintVisible ? "visible" : ""}`}>
-        {hint}
-      </div>
+      <div className={`hint-text ${hintVisible ? "visible" : ""}`}>{hint}</div>
 
-      {/* Right-side buttons */}
-      <button
-        className="tab-bar-btn"
-        onClick={handleOpenFolder}
-        title="Open folder in new session"
-      >
+      <button className="tab-bar-btn" onClick={handleOpenFolder} title="Open folder">
         &#x1F4C2;
       </button>
       <button
         className={`tab-bar-btn ${isPinned ? "pinned" : ""}`}
         onClick={handlePin}
-        title={isPinned ? "Unpin panel" : "Pin panel (keep open)"}
+        title={isPinned ? "Unpin" : "Pin panel"}
       >
         &#x1F4CC;
       </button>
       <div className="menu-container" ref={menuRef}>
-        <button
-          className="tab-bar-btn"
-          onClick={() => setShowMenu(!showMenu)}
-          title="Menu"
-        >
+        <button className="tab-bar-btn" onClick={() => setShowMenu(!showMenu)} title="Menu">
           &#x22EE;
         </button>
         {showMenu && (
-          <SettingsMenu onClose={() => setShowMenu(false)} />
+          <SettingsMenu
+            onClose={() => setShowMenu(false)}
+            onThemeChange={onThemeChange}
+            onFontSizeChange={onFontSizeChange}
+            currentTheme={currentTheme}
+            currentFontSize={currentFontSize}
+          />
         )}
-      </div>
-    </div>
-  );
-}
-
-function SettingsMenu({ onClose }: { onClose: () => void }) {
-  const handleCollapse = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    invoke("hide_panel");
-    onClose();
-  };
-
-  const handleQuit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onClose();
-    // Tell Rust to quit
-    invoke("quit_shelly").catch(() => window.close());
-  };
-
-  const menuClick = (action: () => void) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    action();
-    onClose();
-  };
-
-  return (
-    <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
-      <div className="menu-item" onClick={handleCollapse}>
-        Collapse to bar
-      </div>
-      <div className="menu-separator" />
-      <div className="menu-section">Settings</div>
-      <div className="menu-item sub" onClick={menuClick(() => { /* TODO: shell picker */ })}>
-        Default Shell
-      </div>
-      <div className="menu-item sub" onClick={menuClick(() => { /* TODO: font size */ })}>
-        Text Size
-      </div>
-      <div className="menu-item sub" onClick={menuClick(() => { /* TODO: keybinding */ })}>
-        Set Keybinding
-      </div>
-      <div className="menu-separator" />
-      <div className="menu-item" onClick={menuClick(() => { /* TODO: check updates */ })}>
-        Check for Updates
-      </div>
-      <div className="menu-item danger" onClick={handleQuit}>
-        Quit Shelly
       </div>
     </div>
   );

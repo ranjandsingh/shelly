@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { TerminalView } from "./components/TerminalView";
 import { SessionTabBar } from "./components/SessionTabBar";
 import { useSessionStore } from "./hooks/useSessionStore";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DragBar } from "./components/DragBar";
+import { THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
 import "./App.css";
 
 function App() {
@@ -17,48 +17,61 @@ function App() {
     refresh,
   } = useSessionStore();
 
-  const [_isVisible, setIsVisible] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState("vs-dark");
+  const [fontSize, setFontSize] = useState(11);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   );
 
-  // Sync visibility state with Rust events
+  const terminalTheme = useMemo(
+    () => getTerminalTheme(THEMES[currentTheme] || THEMES["vs-dark"]),
+    [currentTheme]
+  );
+
+  // Apply chrome theme on change
   useEffect(() => {
-    const unlisten = listen<boolean>("panel-visibility", (event) => {
-      setIsVisible(event.payload);
-    });
-    // Check initial visibility
-    getCurrentWindow().isVisible().then(setIsVisible);
-    return () => { unlisten.then((f) => f()); };
+    const theme = THEMES[currentTheme] || THEMES["vs-dark"];
+    applyThemeToCSS(theme);
+  }, [currentTheme]);
+
+  // Load saved theme from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("shelly-theme");
+    if (saved && THEMES[saved]) setCurrentTheme(saved);
+    const savedSize = localStorage.getItem("shelly-font-size");
+    if (savedSize) setFontSize(parseInt(savedSize, 10));
   }, []);
 
-  // Listen for session refresh from Rust (e.g. after drag-drop creates session)
+  const handleThemeChange = useCallback((themeId: string) => {
+    setCurrentTheme(themeId);
+    localStorage.setItem("shelly-theme", themeId);
+  }, []);
+
+  const handleFontSizeChange = useCallback((size: number) => {
+    setFontSize(size);
+    localStorage.setItem("shelly-font-size", String(size));
+  }, []);
+
+  // Listen for session refresh from Rust
   useEffect(() => {
     const unlisten = listen("sessions-force-refresh", () => { refresh(); });
     return () => { unlisten.then((f) => f()); };
   }, [refresh]);
 
-  // Keyboard shortcuts — capture phase to intercept before xterm
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
-
       if (e.key === "t") {
-        e.preventDefault();
-        e.stopPropagation();
-        addSession();
+        e.preventDefault(); e.stopPropagation(); addSession();
       } else if (e.key === "w") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (activeSessionId && sessions.length > 1) {
-          removeSession(activeSessionId);
-        }
+        e.preventDefault(); e.stopPropagation();
+        if (activeSessionId && sessions.length > 1) removeSession(activeSessionId);
       } else if (e.key === "Tab") {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (sessions.length < 2) return;
         const idx = sessions.findIndex((s) => s.id === activeSessionId);
         const next = e.shiftKey
@@ -80,11 +93,17 @@ function App() {
         onSelect={selectSession}
         onAdd={() => addSession()}
         onClose={removeSession}
+        currentTheme={currentTheme}
+        currentFontSize={fontSize}
+        onThemeChange={handleThemeChange}
+        onFontSizeChange={handleFontSizeChange}
       />
       <div className="terminal-area">
         <TerminalView
           sessionId={activeSessionId}
           workingDirectory={activeSession?.workingDirectory}
+          theme={terminalTheme}
+          fontSize={fontSize}
         />
       </div>
     </div>

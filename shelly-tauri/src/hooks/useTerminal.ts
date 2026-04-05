@@ -16,7 +16,9 @@ import {
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   sessionId: string | null,
-  workingDirectory?: string
+  workingDirectory?: string,
+  theme?: any,
+  fontSize?: number
 ) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -97,6 +99,15 @@ export function useTerminal(
       fitAddonRef.current = null;
     };
   }, [containerRef]);
+
+  // Apply theme and font size changes
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    if (theme) term.options.theme = theme;
+    if (fontSize) term.options.fontSize = fontSize;
+    fitAddonRef.current?.fit();
+  }, [theme, fontSize]);
 
   // Attach to session
   const attachSession = useCallback(
