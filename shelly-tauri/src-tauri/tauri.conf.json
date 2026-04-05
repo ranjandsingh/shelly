@@ -26,10 +26,10 @@
       {
         "label": "notch",
         "title": "",
-        "width": 140,
-        "height": 28,
+        "width": 100,
+        "height": 24,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "alwaysOnTop": true,
         "resizable": false,
         "visible": true,

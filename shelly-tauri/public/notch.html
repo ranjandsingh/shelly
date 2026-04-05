@@ -8,42 +8,25 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: transparent;
+    background: #2a2a2a;
     user-select: none;
     -webkit-user-select: none;
+    cursor: pointer;
   }
   body {
     display: flex;
-    justify-content: center;
-    align-items: flex-start;
-  }
-  .notch {
-    display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 14px;
-    height: 26px;
     gap: 6px;
-    background: rgba(35, 35, 35, 0.92);
-    border-radius: 0 0 12px 12px;
-    cursor: pointer;
-    border: 1px solid rgba(255,255,255,0.06);
-    border-top: none;
-    transition: background 0.15s, padding 0.3s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  }
-  .notch:hover {
-    background: rgba(50, 50, 50, 0.95);
-    padding: 0 18px;
   }
 
-  /* Greeting state — wider with icon + text */
+  /* Greeting */
   .greeting-wrap {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     overflow: hidden;
-    max-width: 200px;
+    max-width: 150px;
     transition: max-width 0.5s ease, opacity 0.4s;
   }
   .greeting-wrap.hidden {
@@ -51,15 +34,15 @@
     opacity: 0;
   }
   .greeting-icon {
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
     flex-shrink: 0;
   }
   .greeting-text {
-    color: #e0e0e0;
-    font-size: 12px;
-    font-weight: 600;
+    color: #ccc;
+    font-size: 11px;
+    font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     white-space: nowrap;
   }
@@ -75,7 +58,6 @@
     height: 6px;
     border-radius: 50%;
     background: #555;
-    transition: background 0.2s;
   }
   .dot.working { background: #ffa726; }
   .dot.waiting { background: #ffa726; }
@@ -83,8 +65,8 @@
   .dot.interrupted { background: #ef5350; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spinner {
-    width: 9px;
-    height: 9px;
+    width: 8px;
+    height: 8px;
     border: 1.5px solid transparent;
     border-top-color: #ffa726;
     border-radius: 50%;
@@ -93,48 +75,40 @@
 </style>
 </head>
 <body>
-  <div class="notch" id="notch">
-    <div class="greeting-wrap" id="greeting">
-      <img class="greeting-icon" src="icon.png" alt="">
-      <span class="greeting-text">Hello!</span>
-    </div>
-    <div class="dots" id="dots"></div>
+  <div class="greeting-wrap" id="greeting">
+    <img class="greeting-icon" src="icon.png" alt="">
+    <span class="greeting-text">Hello!</span>
   </div>
-  <script>
-    const notchEl = document.getElementById('notch');
-    const greetingEl = document.getElementById('greeting');
-    const dotsEl = document.getElementById('dots');
+  <div class="dots" id="dots"></div>
 
-    // Hide greeting after 3 seconds with smooth collapse
+  <script>
+    // Hide greeting after 3s
     setTimeout(() => {
-      greetingEl.classList.add('hidden');
+      document.getElementById('greeting').classList.add('hidden');
     }, 3000);
 
     // Click -> toggle panel
-    notchEl.addEventListener('click', () => {
-      if (window.__TAURI__) {
-        window.__TAURI__.core.invoke('toggle_panel');
-      }
+    document.body.addEventListener('click', () => {
+      if (window.__TAURI__) window.__TAURI__.core.invoke('toggle_panel');
     });
 
-    // Hover -> show panel after brief delay
+    // Hover -> show panel
     let hoverTimer = null;
-    notchEl.addEventListener('mouseenter', () => {
+    document.body.addEventListener('mouseenter', () => {
       hoverTimer = setTimeout(() => {
-        if (window.__TAURI__) {
-          window.__TAURI__.core.invoke('show_panel');
-        }
+        if (window.__TAURI__) window.__TAURI__.core.invoke('show_panel');
       }, 250);
     });
-    notchEl.addEventListener('mouseleave', () => {
+    document.body.addEventListener('mouseleave', () => {
       if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     });
 
-    // Listen for session status updates
+    // Status updates
     if (window.__TAURI__) {
       window.__TAURI__.event.listen('sessions-updated', (event) => {
         const sessions = event.payload;
         if (!Array.isArray(sessions)) return;
+        const dotsEl = document.getElementById('dots');
         dotsEl.innerHTML = '';
         sessions.forEach((s) => {
           const status = (s.status || 'Idle');
