@@ -48,8 +48,9 @@ export function SessionTabBar({
 }: SessionTabBarProps) {
   const [isPinned, setIsPinned] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showHints, setShowHints] = useState(true);
   const [hint, setHint] = useState("");
-  const [hintShown, setHintShown] = useState(false);
+  const [hintVisible, setHintVisible] = useState(false);
   const [overflow, setOverflow] = useState(false);
   const hintIdx = useRef(Math.floor(Math.random() * HINTS.length));
   const menuRef = useRef<HTMLDivElement>(null);
@@ -69,24 +70,24 @@ export function SessionTabBar({
     return () => ro.disconnect();
   }, [sessions.length, checkOverflow]);
 
-  // --- Hints (only when no overflow) ---
+  // --- Hint fade cycle (runs regardless of overflow) ---
   useEffect(() => {
-    if (overflow) { setHintShown(false); return; }
+    if (!showHints) { setHintVisible(false); return; }
     let alive = true;
-    const run = async () => {
-      await sleep(2000);
+    const cycle = async () => {
+      await sleep(1000);
       while (alive) {
         setHint(`Tip: ${HINTS[hintIdx.current]}`);
-        setHintShown(true);
-        await sleep(5000);
-        setHintShown(false);
+        setHintVisible(true);
+        await sleep(6000);
+        setHintVisible(false);
         hintIdx.current = (hintIdx.current + 1) % HINTS.length;
-        await sleep(10000);
+        await sleep(8000);
       }
     };
-    run();
-    return () => { alive = false; setHintShown(false); };
-  }, [overflow]);
+    cycle();
+    return () => { alive = false; };
+  }, [showHints]);
 
   // --- Close menu on outside click ---
   useEffect(() => {
@@ -141,8 +142,10 @@ export function SessionTabBar({
         <button className="tabbar-arrow" onClick={() => scrollBy(120)}>&#x276F;</button>
       )}
 
-      {/* Hint (only when not overflowing) */}
-      {!overflow && <span className={`tabbar-hint ${hintShown ? "show" : ""}`}>{hint}</span>}
+      {/* Hint — fades in/out, hidden when overflow or user disabled */}
+      {showHints && !overflow && (
+        <span className={`tabbar-hint ${hintVisible ? "show" : ""}`}>{hint}</span>
+      )}
 
       {/* Right buttons */}
       <button className="tabbar-btn" onClick={async () => { try { await invoke("pick_folder"); onRefresh(); } catch {} }} title="Open folder">&#x1F4C2;</button>
@@ -156,6 +159,8 @@ export function SessionTabBar({
             onFontSizeChange={onFontSizeChange}
             currentTheme={currentTheme}
             currentFontSize={currentFontSize}
+            showHints={showHints}
+            onToggleHints={() => setShowHints(!showHints)}
           />
         )}
       </div>

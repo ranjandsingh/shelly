@@ -8,6 +8,8 @@ interface SettingsMenuProps {
   onFontSizeChange: (size: number) => void;
   currentTheme: string;
   currentFontSize: number;
+  showHints: boolean;
+  onToggleHints: () => void;
 }
 
 interface ShellInfo {
@@ -31,6 +33,8 @@ export function SettingsMenu({
   onFontSizeChange,
   currentTheme,
   currentFontSize,
+  showHints,
+  onToggleHints,
 }: SettingsMenuProps) {
   const [subMenu, setSubMenu] = useState<string | null>(null);
   const [shells, setShells] = useState<ShellInfo[]>([]);
@@ -225,6 +229,13 @@ export function SettingsMenu({
           >
             Auto-check Updates
             <span className="toggle-indicator">{settings.autoCheckUpdates ? "ON" : "OFF"}</span>
+          </div>
+          <div
+            className={`menu-item toggle ${showHints ? "on" : ""}`}
+            onClick={onToggleHints}
+          >
+            Show Hints
+            <span className="toggle-indicator">{showHints ? "ON" : "OFF"}</span>
           </div>
         </>
       )}
