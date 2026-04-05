@@ -25,6 +25,7 @@ struct AppState {
     settings: Mutex<settings::AppSettings>,
     default_shell: Mutex<String>,
     is_pinned: Mutex<bool>,
+    hide_cooldown: Mutex<Option<std::time::Instant>>,
 }
 
 fn do_show_panel(app: &AppHandle) {
@@ -238,6 +239,12 @@ fn get_pinned(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
+fn quit_shelly(app: AppHandle) {
+    log::info!("CMD quit_app");
+    app.exit(0);
+}
+
+#[tauri::command]
 fn position_panel_center(app: AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if let Ok(Some(monitor)) = app.primary_monitor() {
@@ -285,6 +292,7 @@ pub fn run() {
             settings: Mutex::new(app_settings),
             default_shell: Mutex::new(default_shell),
             is_pinned: Mutex::new(false),
+            hide_cooldown: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -324,18 +332,57 @@ pub fn run() {
             }
 
             // Main window: click-outside-hide (when not pinned)
+            // Uses a delay to avoid hiding during resize, menu interactions, etc.
             if let Some(main_win) = app.get_webview_window("main") {
                 let handle_blur = app.handle().clone();
                 main_win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(false) = event {
-                        // Check if pinned
-                        if let Some(state) = handle_blur.try_state::<AppState>() {
-                            let pinned = *state.is_pinned.lock().unwrap();
-                            if !pinned {
-                                log::info!("MAIN: lost focus, not pinned -> hiding");
-                                do_hide_panel(&handle_blur);
+                    match event {
+                        tauri::WindowEvent::Focused(false) => {
+                            if let Some(state) = handle_blur.try_state::<AppState>() {
+                                let pinned = *state.is_pinned.lock().unwrap();
+                                if pinned {
+                                    return;
+                                }
+                                // Check cooldown (resize/interaction in progress)
+                                if let Some(cooldown) = *state.hide_cooldown.lock().unwrap() {
+                                    if cooldown.elapsed() < std::time::Duration::from_millis(500) {
+                                        log::info!("MAIN: blur suppressed (cooldown active)");
+                                        return;
+                                    }
+                                }
+                            }
+                            // Delay hide by 300ms to allow menu clicks, drag, etc.
+                            let h = handle_blur.clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(300));
+                                // Re-check: if window regained focus, don't hide
+                                if let Some(main_win) = h.get_webview_window("main") {
+                                    if main_win.is_focused().unwrap_or(false) {
+                                        return;
+                                    }
+                                    if let Some(state) = h.try_state::<AppState>() {
+                                        if *state.is_pinned.lock().unwrap() {
+                                            return;
+                                        }
+                                    }
+                                }
+                                log::info!("MAIN: lost focus, not pinned -> hiding (delayed)");
+                                do_hide_panel(&h);
+                            });
+                        }
+                        tauri::WindowEvent::Resized(_) => {
+                            // Set cooldown to prevent blur-hide during resize
+                            if let Some(state) = handle_blur.try_state::<AppState>() {
+                                *state.hide_cooldown.lock().unwrap() = Some(std::time::Instant::now());
                             }
                         }
+                        tauri::WindowEvent::Moved(_) => {
+                            // Set cooldown during drag
+                            if let Some(state) = handle_blur.try_state::<AppState>() {
+                                *state.hide_cooldown.lock().unwrap() = Some(std::time::Instant::now());
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
@@ -375,6 +422,7 @@ pub fn run() {
             hide_panel,
             set_pinned,
             get_pinned,
+            quit_shelly,
             position_panel_center,
             set_auto_start_cmd,
             detect_ide_projects,

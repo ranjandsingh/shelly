@@ -87,7 +87,7 @@ export function SessionTabBar({
     <div className="session-tab-bar">
       {/* App icon */}
       <div className="tab-bar-icon">
-        <span className="app-icon">&#x1F41A;</span>
+        <img src="/icon.png" alt="" className="app-icon-img" />
       </div>
 
       {/* Scrollable tabs */}
@@ -156,35 +156,43 @@ export function SessionTabBar({
 }
 
 function SettingsMenu({ onClose }: { onClose: () => void }) {
-  const handleCollapse = () => {
+  const handleCollapse = (e: React.MouseEvent) => {
+    e.stopPropagation();
     invoke("hide_panel");
     onClose();
   };
 
-  const handleQuit = () => {
-    // Exit the app via process
-    invoke("destroy_terminal", { sessionId: "" }).catch(() => {});
-    window.close();
+  const handleQuit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClose();
+    // Tell Rust to quit
+    invoke("quit_shelly").catch(() => window.close());
+  };
+
+  const menuClick = (action: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    action();
+    onClose();
   };
 
   return (
-    <div className="settings-menu">
+    <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
       <div className="menu-item" onClick={handleCollapse}>
         Collapse to bar
       </div>
       <div className="menu-separator" />
       <div className="menu-section">Settings</div>
-      <div className="menu-item sub" onClick={() => { /* TODO: shell picker */ onClose(); }}>
+      <div className="menu-item sub" onClick={menuClick(() => { /* TODO: shell picker */ })}>
         Default Shell
       </div>
-      <div className="menu-item sub" onClick={() => { /* TODO: font size */ onClose(); }}>
+      <div className="menu-item sub" onClick={menuClick(() => { /* TODO: font size */ })}>
         Text Size
       </div>
-      <div className="menu-item sub" onClick={() => { /* TODO: keybinding */ onClose(); }}>
+      <div className="menu-item sub" onClick={menuClick(() => { /* TODO: keybinding */ })}>
         Set Keybinding
       </div>
       <div className="menu-separator" />
-      <div className="menu-item" onClick={() => { onClose(); }}>
+      <div className="menu-item" onClick={menuClick(() => { /* TODO: check updates */ })}>
         Check for Updates
       </div>
       <div className="menu-item danger" onClick={handleQuit}>
