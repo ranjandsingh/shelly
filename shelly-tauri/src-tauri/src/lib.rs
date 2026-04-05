@@ -26,6 +26,7 @@ struct AppState {
     default_shell: Mutex<String>,
     is_pinned: Mutex<bool>,
     hide_cooldown: Mutex<Option<std::time::Instant>>,
+    dialog_open: Mutex<bool>,
 }
 
 fn do_show_panel(app: &AppHandle) {
@@ -177,9 +178,14 @@ fn get_session(session_id: String, state: State<'_, AppState>) -> Option<Termina
 async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Option<session_store::TerminalSession>, String> {
     use tauri_plugin_dialog::DialogExt;
 
+    // Suppress blur-hide while dialog is open
+    *state.dialog_open.lock().unwrap() = true;
+
     let folder = app.dialog().file()
         .set_title("Select folder for new terminal session")
         .blocking_pick_folder();
+
+    *state.dialog_open.lock().unwrap() = false;
 
     if let Some(path) = folder {
         let path_str = path.to_string();
@@ -192,10 +198,15 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
             Some(path_str.clone()),
             Some(path_str),
         );
+        state.session_store.select_session(&session.id);
         log::info!("CMD pick_folder: created session {} for {}", session.id, session.working_directory);
+        // Re-show and focus the panel
         do_show_panel(&app);
+        let _ = app.emit("sessions-force-refresh", ());
         Ok(Some(session))
     } else {
+        // Re-show panel even if cancelled
+        do_show_panel(&app);
         Ok(None)
     }
 }
@@ -384,6 +395,7 @@ pub fn run() {
             default_shell: Mutex::new(default_shell),
             is_pinned: Mutex::new(false),
             hide_cooldown: Mutex::new(None),
+            dialog_open: Mutex::new(false),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -433,6 +445,11 @@ pub fn run() {
                             if let Some(state) = handle_blur.try_state::<AppState>() {
                                 let pinned = *state.is_pinned.lock().unwrap();
                                 if pinned {
+                                    return;
+                                }
+                                // Check if dialog is open
+                                if *state.dialog_open.lock().unwrap() {
+                                    log::info!("MAIN: blur suppressed (dialog open)");
                                     return;
                                 }
                                 // Check cooldown (resize/interaction in progress)
