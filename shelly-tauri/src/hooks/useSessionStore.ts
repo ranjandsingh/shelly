@@ -54,6 +54,8 @@ export function useSessionStore() {
         projectPath: projectPath ?? null,
         workingDir: workingDir ?? null,
       });
+      // Select the new session so it gets focused
+      await invoke("select_session", { sessionId: session.id });
       await refresh();
       return session;
     },

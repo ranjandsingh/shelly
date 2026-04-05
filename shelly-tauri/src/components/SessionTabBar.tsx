@@ -9,6 +9,7 @@ interface SessionTabBarProps {
   onSelect: (id: string) => void;
   onAdd: () => void;
   onClose: (id: string) => void;
+  onRefresh: () => void;
   currentTheme: string;
   currentFontSize: number;
   onThemeChange: (themeId: string) => void;
@@ -41,6 +42,7 @@ export function SessionTabBar({
   onSelect,
   onAdd,
   onClose,
+  onRefresh,
   currentTheme,
   currentFontSize,
   onThemeChange,
@@ -87,6 +89,8 @@ export function SessionTabBar({
   const handleOpenFolder = async () => {
     try {
       await invoke("pick_folder");
+      // Refresh to pick up the new session created by Rust
+      onRefresh();
     } catch (e) {
       console.error("[SessionTabBar] pick_folder error:", e);
     }

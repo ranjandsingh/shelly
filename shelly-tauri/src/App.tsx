@@ -93,6 +93,7 @@ function App() {
         onSelect={selectSession}
         onAdd={() => addSession()}
         onClose={removeSession}
+        onRefresh={refresh}
         currentTheme={currentTheme}
         currentFontSize={fontSize}
         onThemeChange={handleThemeChange}
