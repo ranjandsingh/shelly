@@ -21,7 +21,9 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
   background: var(--panel-bg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-weight: 450;
+  letter-spacing: 0.01em;
 }
 
 /* Dark scrollbar */
@@ -111,6 +113,7 @@ html, body, #root {
   border-radius: 5px;
   color: var(--tab-text);
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
@@ -238,6 +241,7 @@ html, body, #root {
   padding: 7px 16px;
   color: var(--menu-text);
   font-size: 12px;
+  font-weight: 450;
   cursor: pointer;
   transition: background 0.1s;
   display: flex;
