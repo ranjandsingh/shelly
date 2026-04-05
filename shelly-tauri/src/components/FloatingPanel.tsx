@@ -22,34 +22,41 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const appWindow = getCurrentWindow();
 
-  const positionBelowNotch = useCallback(async () => {
-    const monitor = await currentMonitor();
-    if (!monitor) return;
-    const screenWidth = monitor.size.width / monitor.scaleFactor;
-    const x = Math.round((screenWidth - DEFAULT_WIDTH) / 2);
-    await appWindow.setSize(new LogicalSize(DEFAULT_WIDTH, DEFAULT_HEIGHT));
-    await appWindow.setPosition(new LogicalPosition(x, TOP_OFFSET));
+  const showPanel = useCallback(async () => {
+    console.log("[FloatingPanel] showPanel called");
+    try {
+      const monitor = await currentMonitor();
+      if (monitor) {
+        const screenWidth = monitor.size.width / monitor.scaleFactor;
+        const x = Math.round((screenWidth - DEFAULT_WIDTH) / 2);
+        console.log(`[FloatingPanel] positioning at x=${x}, y=${TOP_OFFSET}, size=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT}`);
+        await appWindow.setSize(new LogicalSize(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+        await appWindow.setPosition(new LogicalPosition(x, TOP_OFFSET));
+      }
+      await appWindow.show();
+      await appWindow.setFocus();
+      console.log("[FloatingPanel] window shown and focused");
+    } catch (e) {
+      console.error("[FloatingPanel] showPanel error:", e);
+    }
+  }, [appWindow]);
+
+  const hidePanel = useCallback(async () => {
+    console.log("[FloatingPanel] hidePanel called");
+    try {
+      await appWindow.hide();
+    } catch (e) {
+      console.error("[FloatingPanel] hidePanel error:", e);
+    }
   }, [appWindow]);
 
   useEffect(() => {
-    const update = async () => {
-      if (isExpanded) {
-        console.log("[FloatingPanel] showing main window");
-        await positionBelowNotch();
-        await appWindow.show();
-        await appWindow.setFocus();
-      } else {
-        console.log("[FloatingPanel] hiding main window");
-        await appWindow.hide();
-      }
-    };
-    update();
-  }, [isExpanded, positionBelowNotch, appWindow]);
-
-  // Start hidden
-  useEffect(() => {
-    appWindow.hide();
-  }, []);
+    if (isExpanded) {
+      showPanel();
+    } else {
+      hidePanel();
+    }
+  }, [isExpanded, showPanel, hidePanel]);
 
   const handleResizeMouseDown = useCallback(
     async (e: React.MouseEvent) => {

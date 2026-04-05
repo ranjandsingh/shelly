@@ -214,12 +214,9 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     log::info!("HOTKEY: {:?} state={:?}", shortcut, event.state);
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        log::info!("HOTKEY: emitting tray-toggle-panel");
+                        log::info!("HOTKEY: emitting toggle-panel to React");
+                        // Just emit — let React handle show/hide/positioning
                         let _ = app.emit("tray-toggle-panel", ());
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
                     }
                 })
                 .build(),
@@ -250,16 +247,17 @@ pub fn run() {
                 });
             }
 
-            // Listen for notch-clicked event -> toggle main panel
-            let handle = app.handle().clone();
-            app.listen("notch-clicked", move |_event| {
-                log::info!("SETUP: notch-clicked received, toggling panel");
-                let _ = handle.emit("tray-toggle-panel", ());
-                if let Some(window) = handle.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            });
+            // When notch window receives focus (user clicked it), toggle the main panel
+            if let Some(notch_win) = app.get_webview_window("notch") {
+                let handle = app.handle().clone();
+                notch_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(true) = event {
+                        log::info!("NOTCH: clicked -> emitting toggle-panel to React");
+                        // Just emit — let React handle show/hide/positioning
+                        let _ = handle.emit("tray-toggle-panel", ());
+                    }
+                });
+            }
 
             // Register default hotkey: CmdOrCtrl+`
             log::info!("SETUP: registering global shortcut CmdOrCtrl+`...");
