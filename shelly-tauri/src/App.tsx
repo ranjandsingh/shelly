@@ -4,7 +4,6 @@ import { SessionTabBar } from "./components/SessionTabBar";
 import { FloatingPanel } from "./components/FloatingPanel";
 import { useSessionStore } from "./hooks/useSessionStore";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 
 function App() {
@@ -16,30 +15,28 @@ function App() {
     removeSession,
   } = useSessionStore();
 
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   );
 
-  const togglePanel = useCallback(() => {
-    setIsExpanded((prev) => {
-      const next = !prev;
-      console.log(`[App] togglePanel: ${prev} -> ${next}`);
-      const win = getCurrentWindow();
-      if (next) {
-        win.show();
-        win.setFocus();
-      } else {
-        win.hide();
-      }
-      return next;
-    });
+  const expandPanel = useCallback(() => {
+    console.log("[App] expandPanel");
+    setIsExpanded(true);
   }, []);
 
-  const handleExpand = useCallback((_pin: boolean) => {
-    setIsExpanded(true);
+  const collapsePanel = useCallback(() => {
+    console.log("[App] collapsePanel");
+    setIsExpanded(false);
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    setIsExpanded((prev) => {
+      console.log(`[App] togglePanel: ${prev} -> ${!prev}`);
+      return !prev;
+    });
   }, []);
 
   // Listen for tray/hotkey events
@@ -58,6 +55,32 @@ function App() {
       unlistenNewSession.then((f) => f());
     };
   }, [addSession, togglePanel]);
+
+  // Auto-collapse on blur when expanded
+  useEffect(() => {
+    let blurTimer: number | null = null;
+    const handleBlur = () => {
+      if (!isExpanded) return;
+      // Delay to avoid collapse during drag or resize
+      blurTimer = window.setTimeout(() => {
+        console.log("[App] window blur -> collapsing");
+        collapsePanel();
+      }, 300);
+    };
+    const handleFocus = () => {
+      if (blurTimer) {
+        clearTimeout(blurTimer);
+        blurTimer = null;
+      }
+    };
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+      if (blurTimer) clearTimeout(blurTimer);
+    };
+  }, [isExpanded, collapsePanel]);
 
   // Keyboard shortcuts — use capture phase to intercept before xterm
   useEffect(() => {
@@ -89,15 +112,19 @@ function App() {
         selectSession(sessions[next].id);
       }
     };
-    // Use capture phase to intercept before xterm gets the event
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [sessions, activeSessionId, addSession, selectSession, removeSession]);
 
   return (
     <FloatingPanel
+      sessions={sessions}
       isExpanded={isExpanded}
-      onExpand={handleExpand}
+      onExpand={expandPanel}
+      onCollapse={collapsePanel}
+      onSettingsClick={() => {
+        console.log("[App] settings clicked (TODO)");
+      }}
     >
       <div className="app-content">
         <SessionTabBar

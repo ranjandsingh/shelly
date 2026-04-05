@@ -14,6 +14,7 @@ html, body, #root {
   flex-direction: column;
 }
 
+/* Session Tab Bar */
 .session-tab-bar {
   display: flex;
   background: #252525;
@@ -69,7 +70,15 @@ html, body, #root {
   color: #e6e6e6;
 }
 
-/* Notch */
+/* Notch (collapsed state) */
+.notch-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
 .notch {
   width: 120px;
   height: 28px;
@@ -79,7 +88,11 @@ html, body, #root {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  margin: 0 auto;
+  transition: background 0.15s;
+}
+
+.notch:hover {
+  background: #333;
 }
 
 .notch-dots {
@@ -93,7 +106,7 @@ html, body, #root {
   border-radius: 50%;
 }
 
-/* Floating Panel */
+/* Floating Panel (expanded state) */
 .floating-panel {
   width: 100%;
   height: 100%;
@@ -102,9 +115,8 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #333;
-  border-top: none;
   position: relative;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
 .app-content {
@@ -114,6 +126,7 @@ html, body, #root {
   min-height: 0;
 }
 
+/* Drag Bar */
 .drag-bar {
   height: 32px;
   display: flex;
@@ -121,15 +134,43 @@ html, body, #root {
   justify-content: center;
   flex-shrink: 0;
   cursor: grab;
+  position: relative;
+  background: #252525;
+}
+
+.drag-bar:active {
+  cursor: grabbing;
 }
 
 .drag-handle {
   width: 40px;
   height: 4px;
-  background: #444;
+  background: #555;
   border-radius: 2px;
 }
 
+/* Settings button */
+.settings-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.settings-btn:hover {
+  background: #333;
+  color: #e6e6e6;
+}
+
+/* Resize grip */
 .resize-grip {
   position: absolute;
   bottom: 0;
@@ -137,4 +178,15 @@ html, body, #root {
   width: 16px;
   height: 16px;
   cursor: nwse-resize;
+}
+
+.resize-grip::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #555;
+  border-bottom: 2px solid #555;
 }
