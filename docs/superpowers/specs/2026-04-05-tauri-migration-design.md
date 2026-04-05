@@ -50,7 +50,7 @@ shelly-tauri/
 │   │   ├── Notch.tsx             # Collapsed notch bar with status dots
 │   │   ├── SessionTabBar.tsx     # Tab strip with add/close/rename
 │   │   ├── TerminalView.tsx      # xterm.js wrapper, IPC bridge to Rust PTY
-│   │   └── DragBar.tsx           # Window drag handle
+│   │   └── DragBar.tsx           # Window drag handle (data-tauri-drag-region)
 │   ├── hooks/
 │   │   ├── useSessionStore.ts    # React state synced with Rust session store
 │   │   └── useTerminal.ts        # xterm.js lifecycle + Tauri IPC
@@ -146,6 +146,7 @@ struct TerminalSession {
 **Window configuration (tauri.conf.json):**
 - Borderless, transparent, always-on-top
 - No taskbar entry (`decorations: false`, `skip_taskbar: true`)
+- macOS: requires `transparent: true` and `titleBarStyle: "overlay"` in window config for proper transparent borderless behavior — this is a known Tauri complexity area, test early
 - Starts collapsed (notch size)
 
 **Notch (collapsed state):**
@@ -154,7 +155,8 @@ struct TerminalSession {
 - Hover -> expand. Click -> expand and pin.
 
 **FloatingPanel (expanded state):**
-- Drag bar, tab bar, terminal view, resize grip
+- Drag bar (uses `data-tauri-drag-region` attribute for native window dragging), tab bar, terminal view
+- Custom CSS resize handle at bottom-right (borderless windows don't have native resize grips — use Tauri's `appWindow.startResizing()` API on mousedown)
 - Default size: 720x400 (same as current)
 - Spring-animated expand: scale 0.93->1.0 + translateY + fadeIn via `framer-motion`
 - Collapse: scale 1.0->0.9 + translateY + fadeOut
@@ -164,10 +166,10 @@ struct TerminalSession {
 - Click/hotkey-opened: stays until deactivated
 - Window blur: collapse unless pinned (same as current `OnDeactivated`)
 
-**Keyboard shortcuts:**
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` -- cycle sessions
-- `Ctrl+T` -- new session
-- `Ctrl+W` -- close session
+**Keyboard shortcuts (Ctrl on Windows, Cmd on macOS — use `CmdOrCtrl` in Tauri):**
+- `CmdOrCtrl+Tab` / `CmdOrCtrl+Shift+Tab` -- cycle sessions
+- `CmdOrCtrl+T` -- new session
+- `CmdOrCtrl+W` -- close session
 
 **Drag & drop:**
 - Folder -> create session
@@ -176,7 +178,7 @@ struct TerminalSession {
 ### 4. Terminal Rendering (`TerminalView.tsx`)
 
 **xterm.js setup:**
-- Same config: Cascadia Code font, size 11, #1a1a1a bg, cursor blink
+- Same config: `"Cascadia Code, Menlo, Consolas, monospace"` font (Cascadia Code on Windows, Menlo fallback on macOS), size 11, #1a1a1a bg, cursor blink
 - `xterm-addon-fit` for auto-sizing
 - One instance, reused across tab switches
 
@@ -213,7 +215,7 @@ Output: listen("terminal-output") -> term.write(base64decoded)
 - Icon changes per status: default, processing, waiting, success
 
 **Global hotkey:**
-- Default: Ctrl+` via `tauri-plugin-global-shortcut`
+- Default: `CmdOrCtrl+`` via `tauri-plugin-global-shortcut` (Ctrl+` on Windows, Cmd+` on macOS)
 - Custom hotkey support with keybinding dialog
 - Saved to settings, restored on launch
 
@@ -263,6 +265,7 @@ struct AppSettings {
     remember_sessions: bool,
     auto_check_updates: bool,
     auto_launch_claude: bool,
+    auto_start: bool,
     font_size: u16,
     hotkey: Option<HotkeyConfig>,
     notch_at_bottom: bool,
@@ -301,13 +304,14 @@ Uses `tauri-plugin-updater` with GitHub Releases endpoint. Tauri handles signatu
 | `tauri-plugin-global-shortcut` | Global hotkey |
 | `tauri-plugin-single-instance` | Single instance |
 | `tauri-plugin-updater` | Auto-update |
-| `portable-pty` | Cross-platform PTY |
+| `portable-pty` | Cross-platform PTY (verify crate name/version at implementation — Wezterm project has restructured crates before) |
 | `serde` / `serde_json` | Settings serialization |
 | `uuid` | Session IDs |
 | `regex` | Status parser patterns |
 | `rodio` | Audio playback |
 | `windows` (Windows) | Win32 APIs (sleep prevention, IDE detection, registry) |
 | `winreg` (Windows) | Auto-start registry |
+| `log` + `env_logger` or `tracing` | Logging (replaces current C# Logger service) |
 
 ## npm Dependencies
 
