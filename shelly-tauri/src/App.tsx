@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TerminalView } from "./components/TerminalView";
 import { SessionTabBar } from "./components/SessionTabBar";
-import { FloatingPanel } from "./components/FloatingPanel";
 import { useSessionStore } from "./hooks/useSessionStore";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { DragBar } from "./components/DragBar";
 import "./App.css";
 
 function App() {
@@ -15,57 +16,40 @@ function App() {
     removeSession,
   } = useSessionStore();
 
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [_isVisible, setIsVisible] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   );
 
-  const togglePanel = useCallback(() => {
-    setIsExpanded((prev) => {
-      console.log(`[App] togglePanel: ${prev} -> ${!prev}`);
-      return !prev;
+  // Sync visibility state with Rust events
+  useEffect(() => {
+    const unlisten = listen<boolean>("panel-visibility", (event) => {
+      setIsVisible(event.payload);
     });
+    // Check initial visibility
+    getCurrentWindow().isVisible().then(setIsVisible);
+    return () => { unlisten.then((f) => f()); };
   }, []);
 
-  // Listen for tray/hotkey events
-  useEffect(() => {
-    console.log("[App] setting up tray event listeners");
-    const unlistenToggle = listen("tray-toggle-panel", () => {
-      console.log("[App] received tray-toggle-panel event");
-      togglePanel();
-    });
-    const unlistenNewSession = listen("tray-new-session", () => {
-      console.log("[App] received tray-new-session event");
-      addSession();
-    });
-    return () => {
-      unlistenToggle.then((f) => f());
-      unlistenNewSession.then((f) => f());
-    };
-  }, [addSession, togglePanel]);
-
-  // Keyboard shortcuts — use capture phase to intercept before xterm
+  // Keyboard shortcuts — capture phase to intercept before xterm
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
 
       if (e.key === "t") {
-        console.log("[App] Ctrl+T: new session");
         e.preventDefault();
         e.stopPropagation();
         addSession();
       } else if (e.key === "w") {
-        console.log("[App] Ctrl+W: close session");
         e.preventDefault();
         e.stopPropagation();
         if (activeSessionId && sessions.length > 1) {
           removeSession(activeSessionId);
         }
       } else if (e.key === "Tab") {
-        console.log("[App] Ctrl+Tab: cycle session");
         e.preventDefault();
         e.stopPropagation();
         if (sessions.length < 2) return;
@@ -81,26 +65,22 @@ function App() {
   }, [sessions, activeSessionId, addSession, selectSession, removeSession]);
 
   return (
-    <FloatingPanel
-      isExpanded={isExpanded}
-      onSettingsClick={() => {
-        console.log("[App] settings clicked (TODO)");
-      }}
-    >
-      <div className="app-content">
-        <SessionTabBar
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          onSelect={selectSession}
-          onAdd={() => addSession()}
-          onClose={removeSession}
-        />
+    <div className="floating-panel">
+      <DragBar />
+      <SessionTabBar
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelect={selectSession}
+        onAdd={() => addSession()}
+        onClose={removeSession}
+      />
+      <div className="terminal-area">
         <TerminalView
           sessionId={activeSessionId}
           workingDirectory={activeSession?.workingDirectory}
         />
       </div>
-    </FloatingPanel>
+    </div>
   );
 }
 

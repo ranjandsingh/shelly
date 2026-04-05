@@ -24,6 +24,40 @@ struct AppState {
     status_parser: StatusParser,
     settings: Mutex<settings::AppSettings>,
     default_shell: Mutex<String>,
+    is_pinned: Mutex<bool>,
+}
+
+fn do_show_panel(app: &AppHandle) {
+    if let Some(main_win) = app.get_webview_window("main") {
+        if main_win.is_visible().unwrap_or(false) { return; }
+        if let Ok(Some(monitor)) = app.primary_monitor() {
+            let sw = monitor.size().width as f64 / monitor.scale_factor();
+            let x = ((sw - 720.0) / 2.0) as i32;
+            let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
+        }
+        let _ = main_win.show();
+        let _ = main_win.set_focus();
+        let _ = app.emit("panel-visibility", true);
+        log::info!("do_show_panel: shown");
+    }
+}
+
+fn do_hide_panel(app: &AppHandle) {
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.hide();
+        let _ = app.emit("panel-visibility", false);
+        log::info!("do_hide_panel: hidden");
+    }
+}
+
+fn do_toggle_panel(app: &AppHandle) {
+    if let Some(main_win) = app.get_webview_window("main") {
+        if main_win.is_visible().unwrap_or(false) {
+            do_hide_panel(app);
+        } else {
+            do_show_panel(app);
+        }
+    }
 }
 
 // --- Terminal commands ---
@@ -175,6 +209,35 @@ fn detect_ide_projects() -> Vec<ide_detector::DetectedProject> {
 // --- Window commands ---
 
 #[tauri::command]
+fn toggle_panel(app: AppHandle) {
+    log::info!("CMD toggle_panel");
+    do_toggle_panel(&app);
+}
+
+#[tauri::command]
+fn show_panel(app: AppHandle) {
+    log::info!("CMD show_panel");
+    do_show_panel(&app);
+}
+
+#[tauri::command]
+fn hide_panel(app: AppHandle) {
+    log::info!("CMD hide_panel");
+    do_hide_panel(&app);
+}
+
+#[tauri::command]
+fn set_pinned(pinned: bool, state: State<'_, AppState>) {
+    log::info!("CMD set_pinned: {pinned}");
+    *state.is_pinned.lock().unwrap() = pinned;
+}
+
+#[tauri::command]
+fn get_pinned(state: State<'_, AppState>) -> bool {
+    *state.is_pinned.lock().unwrap()
+}
+
+#[tauri::command]
 fn position_panel_center(app: AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if let Ok(Some(monitor)) = app.primary_monitor() {
@@ -221,27 +284,15 @@ pub fn run() {
             status_parser: StatusParser::new(),
             settings: Mutex::new(app_settings),
             default_shell: Mutex::new(default_shell),
+            is_pinned: Mutex::new(false),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    log::info!("HOTKEY: {:?} state={:?}", shortcut, event.state);
+                .with_handler(|app, _shortcut, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        log::info!("HOTKEY: toggling panel");
-                        if let Some(main_win) = app.get_webview_window("main") {
-                            let visible = main_win.is_visible().unwrap_or(false);
-                            if visible {
-                                log::info!("HOTKEY: hiding main window");
-                                let _ = main_win.hide();
-                            } else {
-                                log::info!("HOTKEY: showing main window");
-                                let _ = main_win.show();
-                                let _ = main_win.set_focus();
-                            }
-                            // Also tell React so it syncs state
-                            let _ = app.emit("tray-toggle-panel", ());
-                        }
+                        log::info!("HOTKEY: toggle panel");
+                        do_toggle_panel(app);
                     }
                 })
                 .build(),
@@ -272,32 +323,19 @@ pub fn run() {
                 });
             }
 
-            // Notch window interactions
-            if let Some(notch_win) = app.get_webview_window("notch") {
-                // Click (focus) -> toggle panel
-                let handle_click = app.handle().clone();
-                notch_win.on_window_event(move |event| {
-                    match event {
-                        tauri::WindowEvent::Focused(true) => {
-                            log::info!("NOTCH: clicked -> toggling panel");
-                            if let Some(main_win) = handle_click.get_webview_window("main") {
-                                let visible = main_win.is_visible().unwrap_or(false);
-                                if visible {
-                                    let _ = main_win.hide();
-                                } else {
-                                    // Position and show
-                                    if let Ok(Some(monitor)) = handle_click.primary_monitor() {
-                                        let sw = monitor.size().width as f64 / monitor.scale_factor();
-                                        let x = ((sw - 720.0) / 2.0) as i32;
-                                        let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
-                                    }
-                                    let _ = main_win.show();
-                                    let _ = main_win.set_focus();
-                                }
-                                let _ = handle_click.emit("tray-toggle-panel", ());
+            // Main window: click-outside-hide (when not pinned)
+            if let Some(main_win) = app.get_webview_window("main") {
+                let handle_blur = app.handle().clone();
+                main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(false) = event {
+                        // Check if pinned
+                        if let Some(state) = handle_blur.try_state::<AppState>() {
+                            let pinned = *state.is_pinned.lock().unwrap();
+                            if !pinned {
+                                log::info!("MAIN: lost focus, not pinned -> hiding");
+                                do_hide_panel(&handle_blur);
                             }
                         }
-                        _ => {}
                     }
                 });
             }
@@ -332,6 +370,11 @@ pub fn run() {
             parse_visible_text,
             get_settings,
             save_app_settings,
+            toggle_panel,
+            show_panel,
+            hide_panel,
+            set_pinned,
+            get_pinned,
             position_panel_center,
             set_auto_start_cmd,
             detect_ide_projects,

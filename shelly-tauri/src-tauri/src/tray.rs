@@ -36,17 +36,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 log::info!("TRAY: left click - toggling panel");
-                let app = tray.app_handle();
-                if let Some(main_win) = app.get_webview_window("main") {
-                    let visible = main_win.is_visible().unwrap_or(false);
-                    if visible {
-                        let _ = main_win.hide();
-                    } else {
-                        let _ = main_win.show();
-                        let _ = main_win.set_focus();
-                    }
-                    let _ = app.emit("tray-toggle-panel", ());
-                }
+                crate::do_toggle_panel(tray.app_handle());
             }
         })
         .build(app)?;
