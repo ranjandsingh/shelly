@@ -1,34 +1,24 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { currentMonitor } from "@tauri-apps/api/window";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
-import { Notch } from "./Notch";
 import { DragBar } from "./DragBar";
-import { TerminalSession } from "../hooks/useSessionStore";
 
 interface FloatingPanelProps {
-  sessions: TerminalSession[];
   isExpanded: boolean;
   onExpand: (pin: boolean) => void;
-  onCollapse: () => void;
   children: React.ReactNode;
 }
 
-const COLLAPSED_WIDTH = 120;
-const COLLAPSED_HEIGHT = 28;
 const DEFAULT_WIDTH = 720;
 const DEFAULT_HEIGHT = 400;
 
 export function FloatingPanel({
-  sessions,
   isExpanded,
   onExpand,
-  onCollapse,
   children,
 }: FloatingPanelProps) {
-  const [isPinned, setIsPinned] = useState(false);
-  const expandedSizeRef = useRef({ w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT });
   const appWindow = getCurrentWindow();
 
   const positionCenter = useCallback(
@@ -43,41 +33,21 @@ export function FloatingPanel({
     [appWindow]
   );
 
-  const doExpand = useCallback(
-    async (pin: boolean) => {
-      if (isExpanded) return;
-      setIsPinned(pin);
-      await positionCenter(expandedSizeRef.current.w, expandedSizeRef.current.h);
-      await appWindow.setResizable(true);
-      onExpand(pin);
-    },
-    [isExpanded, positionCenter, appWindow, onExpand]
-  );
-
-  const doCollapse = useCallback(async () => {
-    if (!isExpanded) return;
-    setIsPinned(false);
-    await appWindow.setResizable(false);
-    await positionCenter(COLLAPSED_WIDTH, COLLAPSED_HEIGHT);
-    onCollapse();
-  }, [isExpanded, positionCenter, appWindow, onCollapse]);
-
-  // Auto-collapse on blur (unless pinned)
+  // When isExpanded changes, resize and position the window
   useEffect(() => {
-    const handleBlur = () => {
-      if (isExpanded && !isPinned) {
-        doCollapse();
-      }
-    };
-    window.addEventListener("blur", handleBlur);
-    return () => window.removeEventListener("blur", handleBlur);
-  }, [isExpanded, isPinned, doCollapse]);
+    if (isExpanded) {
+      positionCenter(DEFAULT_WIDTH, DEFAULT_HEIGHT).then(() => {
+        appWindow.show();
+        appWindow.setFocus();
+      });
+    } else {
+      appWindow.hide();
+    }
+  }, [isExpanded, positionCenter, appWindow]);
 
-  // Position on mount (collapsed)
+  // Show window on first mount in expanded state
   useEffect(() => {
-    positionCenter(COLLAPSED_WIDTH, COLLAPSED_HEIGHT).then(() => {
-      appWindow.show();
-    });
+    onExpand(true);
   }, []);
 
   const handleResizeMouseDown = useCallback(
@@ -89,13 +59,7 @@ export function FloatingPanel({
   );
 
   if (!isExpanded) {
-    return (
-      <Notch
-        sessions={sessions}
-        onMouseEnter={() => doExpand(false)}
-        onClick={() => doExpand(true)}
-      />
-    );
+    return null; // Window is hidden when collapsed
   }
 
   return (
@@ -111,9 +75,7 @@ export function FloatingPanel({
           damping: 25,
           mass: 0.8,
         }}
-        onMouseDown={() => {
-          setIsPinned(true);
-        }}
+        onMouseDown={() => {}}
       >
         <DragBar />
         {children}

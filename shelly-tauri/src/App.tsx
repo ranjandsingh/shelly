@@ -4,6 +4,7 @@ import { SessionTabBar } from "./components/SessionTabBar";
 import { FloatingPanel } from "./components/FloatingPanel";
 import { useSessionStore } from "./hooks/useSessionStore";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 
 function App() {
@@ -15,7 +16,7 @@ function App() {
     removeSession,
   } = useSessionStore();
 
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
@@ -23,18 +24,24 @@ function App() {
   );
 
   const togglePanel = useCallback(() => {
-    setIsExpanded((prev) => !prev);
+    setIsExpanded((prev) => {
+      const next = !prev;
+      const win = getCurrentWindow();
+      if (next) {
+        win.show();
+        win.setFocus();
+      } else {
+        win.hide();
+      }
+      return next;
+    });
   }, []);
 
   const handleExpand = useCallback((_pin: boolean) => {
     setIsExpanded(true);
   }, []);
 
-  const handleCollapse = useCallback(() => {
-    setIsExpanded(false);
-  }, []);
-
-  // Listen for tray events
+  // Listen for tray/hotkey events
   useEffect(() => {
     const unlistenToggle = listen("tray-toggle-panel", () => {
       togglePanel();
@@ -48,22 +55,25 @@ function App() {
     };
   }, [addSession, togglePanel]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — use capture phase to intercept before xterm
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === "t") {
+      if (!mod) return;
+
+      if (e.key === "t") {
         e.preventDefault();
+        e.stopPropagation();
         addSession();
-      }
-      if (mod && e.key === "w") {
+      } else if (e.key === "w") {
         e.preventDefault();
+        e.stopPropagation();
         if (activeSessionId && sessions.length > 1) {
           removeSession(activeSessionId);
         }
-      }
-      if (mod && e.key === "Tab") {
+      } else if (e.key === "Tab") {
         e.preventDefault();
+        e.stopPropagation();
         if (sessions.length < 2) return;
         const idx = sessions.findIndex((s) => s.id === activeSessionId);
         const next = e.shiftKey
@@ -72,16 +82,15 @@ function App() {
         selectSession(sessions[next].id);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Use capture phase to intercept before xterm gets the event
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [sessions, activeSessionId, addSession, selectSession, removeSession]);
 
   return (
     <FloatingPanel
-      sessions={sessions}
       isExpanded={isExpanded}
       onExpand={handleExpand}
-      onCollapse={handleCollapse}
     >
       <div className="app-content">
         <SessionTabBar
