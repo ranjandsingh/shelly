@@ -70,29 +70,7 @@ html, body, #root {
   color: #e6e6e6;
 }
 
-/* Notch (collapsed state) — window is exactly notch-sized */
-.notch {
-  width: 100%;
-  height: 100%;
-  background: #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.notch-dots {
-  display: flex;
-  gap: 6px;
-}
-
-.notch-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-/* Floating Panel (expanded state) */
+/* Floating Panel */
 .floating-panel {
   width: 100%;
   height: 100%;

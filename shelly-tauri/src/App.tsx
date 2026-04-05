@@ -22,16 +22,6 @@ function App() {
     [sessions, activeSessionId]
   );
 
-  const expandPanel = useCallback(() => {
-    console.log("[App] expandPanel");
-    setIsExpanded(true);
-  }, []);
-
-  const collapsePanel = useCallback(() => {
-    console.log("[App] collapsePanel");
-    setIsExpanded(false);
-  }, []);
-
   const togglePanel = useCallback(() => {
     setIsExpanded((prev) => {
       console.log(`[App] togglePanel: ${prev} -> ${!prev}`);
@@ -55,32 +45,6 @@ function App() {
       unlistenNewSession.then((f) => f());
     };
   }, [addSession, togglePanel]);
-
-  // Auto-collapse on blur when expanded
-  useEffect(() => {
-    let blurTimer: number | null = null;
-    const handleBlur = () => {
-      if (!isExpanded) return;
-      // Delay to avoid collapse during drag or resize
-      blurTimer = window.setTimeout(() => {
-        console.log("[App] window blur -> collapsing");
-        collapsePanel();
-      }, 300);
-    };
-    const handleFocus = () => {
-      if (blurTimer) {
-        clearTimeout(blurTimer);
-        blurTimer = null;
-      }
-    };
-    window.addEventListener("blur", handleBlur);
-    window.addEventListener("focus", handleFocus);
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-      window.removeEventListener("focus", handleFocus);
-      if (blurTimer) clearTimeout(blurTimer);
-    };
-  }, [isExpanded, collapsePanel]);
 
   // Keyboard shortcuts — use capture phase to intercept before xterm
   useEffect(() => {
@@ -118,10 +82,7 @@ function App() {
 
   return (
     <FloatingPanel
-      sessions={sessions}
       isExpanded={isExpanded}
-      onExpand={expandPanel}
-      onCollapse={collapsePanel}
       onSettingsClick={() => {
         console.log("[App] settings clicked (TODO)");
       }}
