@@ -180,8 +180,8 @@ fn position_panel_center(app: AppHandle) {
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let screen_width = monitor.size().width as f64 / monitor.scale_factor();
             let x = ((screen_width - 720.0) / 2.0) as i32;
-            let _ = main_win.set_position(tauri::LogicalPosition::new(x, 30));
-            log::info!("CMD position_panel_center: x={x}, y=30");
+            let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
+            log::info!("CMD position_panel_center: x={x}, y=0");
         }
     }
 }
@@ -272,22 +272,32 @@ pub fn run() {
                 });
             }
 
-            // When notch window receives focus (user clicked it), toggle the main panel
+            // Notch window interactions
             if let Some(notch_win) = app.get_webview_window("notch") {
-                let handle = app.handle().clone();
+                // Click (focus) -> toggle panel
+                let handle_click = app.handle().clone();
                 notch_win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(true) = event {
-                        log::info!("NOTCH: clicked -> toggling panel");
-                        if let Some(main_win) = handle.get_webview_window("main") {
-                            let visible = main_win.is_visible().unwrap_or(false);
-                            if visible {
-                                let _ = main_win.hide();
-                            } else {
-                                let _ = main_win.show();
-                                let _ = main_win.set_focus();
+                    match event {
+                        tauri::WindowEvent::Focused(true) => {
+                            log::info!("NOTCH: clicked -> toggling panel");
+                            if let Some(main_win) = handle_click.get_webview_window("main") {
+                                let visible = main_win.is_visible().unwrap_or(false);
+                                if visible {
+                                    let _ = main_win.hide();
+                                } else {
+                                    // Position and show
+                                    if let Ok(Some(monitor)) = handle_click.primary_monitor() {
+                                        let sw = monitor.size().width as f64 / monitor.scale_factor();
+                                        let x = ((sw - 720.0) / 2.0) as i32;
+                                        let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
+                                    }
+                                    let _ = main_win.show();
+                                    let _ = main_win.set_focus();
+                                }
+                                let _ = handle_click.emit("tray-toggle-panel", ());
                             }
-                            let _ = handle.emit("tray-toggle-panel", ());
                         }
+                        _ => {}
                     }
                 });
             }
