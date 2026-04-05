@@ -11,11 +11,32 @@
         .xterm-viewport::-webkit-scrollbar-track { background: #1a1a1a; }
         .xterm-viewport::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
         .xterm-viewport::-webkit-scrollbar-thumb:hover { background: #555; }
+        #scroll-bottom-btn {
+            display: none;
+            position: fixed;
+            bottom: 12px;
+            right: 16px;
+            width: 28px;
+            height: 28px;
+            border: 1px solid #555;
+            border-radius: 6px;
+            background: #2a2a2a;
+            color: #aaa;
+            font-size: 16px;
+            line-height: 26px;
+            text-align: center;
+            cursor: pointer;
+            z-index: 1000;
+            opacity: 0.7;
+            transition: opacity 0.15s;
+        }
+        #scroll-bottom-btn:hover { opacity: 1; background: #333; color: #ddd; }
     </style>
     <link rel="stylesheet" href="xterm.css">
 </head>
 <body>
     <div id="terminal"></div>
+    <div id="scroll-bottom-btn" title="Scroll to bottom">&#x25BE;</div>
     <script src="xterm.js"></script>
     <script src="xterm-addon-fit.js"></script>
     <script>
@@ -44,6 +65,41 @@
         terminalEl.addEventListener('mousedown', () => window.focusTerminal());
         terminalEl.addEventListener('pointerdown', () => window.focusTerminal());
         window.focusTerminal();
+
+        // Scroll-to-bottom button & user-scroll tracking
+        const scrollBtn = document.getElementById('scroll-bottom-btn');
+        let userScrolledUp = false;
+        let viewport = null;
+
+        function isAtBottom() {
+            if (!viewport) return true;
+            return viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1;
+        }
+        function updateScrollBtn() {
+            scrollBtn.style.display = userScrolledUp ? 'block' : 'none';
+        }
+
+        // Detect user-initiated scrolling via wheel/scroll on the xterm viewport
+        setTimeout(() => {
+            viewport = term.element.querySelector('.xterm-viewport');
+            if (viewport) {
+                viewport.addEventListener('wheel', (e) => {
+                    if (e.deltaY < 0) userScrolledUp = true;
+                    requestAnimationFrame(() => {
+                        if (isAtBottom()) userScrolledUp = false;
+                        updateScrollBtn();
+                    });
+                }, { passive: true });
+            }
+        }, 0);
+
+        scrollBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userScrolledUp = false;
+            term.scrollToBottom();
+            updateScrollBtn();
+            term.focus();
+        });
 
         // Send input to C# host
         term.onData(data => {
@@ -83,10 +139,11 @@
         let lastRows = 0;
         function sendResize() {
             try {
-                const buf = term.buffer.active;
-                const wasAtBottom = buf.baseY + term.rows >= buf.length;
+                const savedTop = userScrolledUp && viewport ? viewport.scrollTop : -1;
                 fitAddon.fit();
-                if (wasAtBottom) term.scrollToBottom();
+                if (savedTop >= 0 && viewport) {
+                    viewport.scrollTop = savedTop;
+                }
                 if (term.cols !== lastCols || term.rows !== lastRows) {
                     lastCols = term.cols;
                     lastRows = term.rows;
@@ -116,8 +173,11 @@
             try {
                 const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
                 console.log(`terminalWriteBase64 #${writeCount}: ${b64.length} b64 chars -> ${bytes.length} bytes`);
+                const savedTop = userScrolledUp && viewport ? viewport.scrollTop : -1;
                 term.write(bytes, () => {
-                    term.scrollToBottom();
+                    if (savedTop >= 0 && viewport) {
+                        viewport.scrollTop = savedTop;
+                    }
                 });
             } catch(e) {
                 console.error(`terminalWriteBase64 ERROR: ${e}`);

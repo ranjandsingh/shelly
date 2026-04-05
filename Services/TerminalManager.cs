@@ -92,61 +92,59 @@ public class TerminalManager
 
             var alreadyInProject = string.Equals(workingDirectory, projectPath, StringComparison.OrdinalIgnoreCase);
             var shellName = Path.GetFileNameWithoutExtension(ConPtyTerminal.DefaultShell).ToLower();
-            string cdCommand;
+            string? cdCommand;
 
             if (alreadyInProject)
             {
-                // Shell already started in projectPath via CreateProcessW — skip cd
-                cdCommand = shellName switch
-                {
-                    "bash" => hasClaude ? "clear && claude\r\n" : "clear\r\n",
-                    "powershell" or "pwsh" => hasClaude ? "clear; claude\r\n" : "clear\r\n",
-                    _ => hasClaude ? "cls && claude\r\n" : "cls\r\n",
-                };
+                // Shell already started in projectPath — only send a command if launching Claude
+                cdCommand = hasClaude ? "claude\r\n" : null;
             }
             else
             {
                 cdCommand = shellName switch
                 {
                     "bash" => hasClaude
-                        ? $"cd '{projectPath.Replace("\\", "/")}' && clear && claude\r\n"
-                        : $"cd '{projectPath.Replace("\\", "/")}' && clear\r\n",
+                        ? $"cd '{projectPath.Replace("\\", "/")}' && claude\r\n"
+                        : $"cd '{projectPath.Replace("\\", "/")}'\r\n",
                     "powershell" or "pwsh" => hasClaude
-                        ? $"cd '{projectPath}'; clear; claude\r\n"
-                        : $"cd '{projectPath}'; clear\r\n",
+                        ? $"cd '{projectPath}'; claude\r\n"
+                        : $"cd '{projectPath}'\r\n",
                     _ => hasClaude
-                        ? $"cd \"{projectPath}\" && cls && claude\r\n"
-                        : $"cd \"{projectPath}\" && cls\r\n",
+                        ? $"cd \"{projectPath}\" && claude\r\n"
+                        : $"cd \"{projectPath}\"\r\n",
                 };
             }
 
-            // Wait for the shell to produce its first output (the prompt) before sending
-            // the cd+claude command. Bash on Windows can take 1-3s to load its profile.
-            var shellReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Action<byte[]>? readyHandler = null;
-            readyHandler = _ =>
+            if (cdCommand != null)
             {
-                terminal.OutputReceived -= readyHandler;
-                shellReady.TrySetResult(true);
-            };
-            terminal.OutputReceived += readyHandler;
-
-            Task.Run(async () =>
-            {
-                var completed = await Task.WhenAny(shellReady.Task, Task.Delay(3000));
-                if (completed != shellReady.Task)
+                // Wait for the shell to produce its first output (the prompt) before sending
+                // the cd+claude command. Bash on Windows can take 1-3s to load its profile.
+                var shellReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                Action<byte[]>? readyHandler = null;
+                readyHandler = _ =>
                 {
                     terminal.OutputReceived -= readyHandler;
-                    Logger.Log($"TerminalManager: shell ready timeout for session {sessionId}, sending command anyway");
-                }
-                else
-                {
-                    Logger.Log($"TerminalManager: shell ready detected for session {sessionId}");
-                }
+                    shellReady.TrySetResult(true);
+                };
+                terminal.OutputReceived += readyHandler;
 
-                await Task.Delay(100);
-                terminal.WriteInput(cdCommand);
-            });
+                Task.Run(async () =>
+                {
+                    var completed = await Task.WhenAny(shellReady.Task, Task.Delay(3000));
+                    if (completed != shellReady.Task)
+                    {
+                        terminal.OutputReceived -= readyHandler;
+                        Logger.Log($"TerminalManager: shell ready timeout for session {sessionId}, sending command anyway");
+                    }
+                    else
+                    {
+                        Logger.Log($"TerminalManager: shell ready detected for session {sessionId}");
+                    }
+
+                    await Task.Delay(100);
+                    terminal.WriteInput(cdCommand);
+                });
+            }
         }
     }
 
@@ -177,6 +175,12 @@ public class TerminalManager
     public void Resize(Guid sessionId, short cols, short rows)
     {
         if (_terminals.TryGetValue(sessionId, out var terminal))
+            terminal.Resize(cols, rows);
+    }
+
+    public void ResizeAll(short cols, short rows)
+    {
+        foreach (var terminal in _terminals.Values)
             terminal.Resize(cols, rows);
     }
 

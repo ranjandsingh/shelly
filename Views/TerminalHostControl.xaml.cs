@@ -253,7 +253,7 @@ public partial class TerminalHostControl : UserControl
                     var cols = (short)root.GetProperty("cols").GetInt32();
                     var rows = (short)root.GetProperty("rows").GetInt32();
                     Logger.Log($"TerminalHostControl: resize {cols}x{rows}");
-                    TerminalManager.Instance.Resize(_activeSessionId.Value, cols, rows);
+                    TerminalManager.Instance.ResizeAll(cols, rows);
                     return;
                 }
             }
