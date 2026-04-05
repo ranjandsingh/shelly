@@ -50,26 +50,26 @@ export function SessionTabBar({
   const [showMenu, setShowMenu] = useState(false);
   const [showHints, setShowHints] = useState(true);
   const [hint, setHint] = useState(() => HINTS[Math.floor(Math.random() * HINTS.length)]);
-  const [overflow, setOverflow] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const hintIdx = useRef(Math.floor(Math.random() * HINTS.length));
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- Overflow detection ---
-  const checkOverflow = useCallback(() => {
+  // --- Check scroll state (not overflow — just whether arrows are needed) ---
+  const updateScrollState = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    setOverflow(el.scrollWidth > el.clientWidth + 4);
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }, []);
 
   useEffect(() => {
-    checkOverflow();
-    const ro = new ResizeObserver(checkOverflow);
-    if (scrollRef.current) ro.observe(scrollRef.current);
-    return () => ro.disconnect();
-  }, [sessions.length, checkOverflow]);
+    updateScrollState();
+    // Re-check when sessions change
+  }, [sessions.length, updateScrollState]);
 
-  // --- Rotate hint text every 12s (simple interval, no fade) ---
+  // --- Rotate hint text every 12s ---
   useEffect(() => {
     if (!showHints) return;
     const id = setInterval(() => {
@@ -89,9 +89,9 @@ export function SessionTabBar({
     return () => document.removeEventListener("mousedown", h);
   }, [showMenu]);
 
-  // --- Scroll ---
   const scrollBy = (dx: number) => {
     scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
+    setTimeout(updateScrollState, 300);
   };
 
   return (
@@ -100,15 +100,19 @@ export function SessionTabBar({
       <img src="/icon.png" alt="" className="tabbar-icon" />
 
       {/* Left scroll arrow */}
-      {overflow && (
+      {canScrollLeft && (
         <button className="tabbar-arrow" onClick={() => scrollBy(-120)}>&#x276E;</button>
       )}
 
-      {/* Tabs (scrollable) */}
+      {/* Tabs scroll area — takes all available space */}
       <div
         className="tabbar-scroll"
         ref={scrollRef}
-        onWheel={(e) => { scrollRef.current!.scrollLeft += e.deltaY > 0 ? 60 : -60; }}
+        onWheel={(e) => {
+          scrollRef.current!.scrollLeft += e.deltaY > 0 ? 60 : -60;
+          updateScrollState();
+        }}
+        onScroll={updateScrollState}
       >
         {sessions.map((s) => (
           <div
@@ -123,21 +127,20 @@ export function SessionTabBar({
             )}
           </div>
         ))}
-        {/* + button inside scroll area so it's always after the last tab */}
         <button className="tabbar-btn plus" onClick={onAdd} title="New session (Ctrl+T)">+</button>
+
+        {/* Hint INSIDE the scroll area — it just scrolls away naturally when tabs overflow */}
+        {showHints && (
+          <span className="tabbar-hint">Tip: {hint}</span>
+        )}
       </div>
 
       {/* Right scroll arrow */}
-      {overflow && (
+      {canScrollRight && (
         <button className="tabbar-arrow" onClick={() => scrollBy(120)}>&#x276F;</button>
       )}
 
-      {/* Hint — visible unless user disabled or tabs overflow */}
-      {showHints && !overflow && (
-        <span className="tabbar-hint show">Tip: {hint}</span>
-      )}
-
-      {/* Right buttons */}
+      {/* Right buttons — always visible, never affected by overflow */}
       <button className="tabbar-btn" onClick={async () => { try { await invoke("pick_folder"); onRefresh(); } catch {} }} title="Open folder">&#x1F4C2;</button>
       <button className={`tabbar-btn ${isPinned ? "on" : ""}`} onClick={async () => { const n = !isPinned; setIsPinned(n); await invoke("set_pinned", { pinned: n }); }} title={isPinned ? "Unpin" : "Pin"}>&#x1F4CC;</button>
       <div className="tabbar-menu-wrap" ref={menuRef}>
@@ -157,4 +160,3 @@ export function SessionTabBar({
     </div>
   );
 }
-

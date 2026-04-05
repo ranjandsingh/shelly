@@ -188,21 +188,15 @@ html, body, #root {
 .tabbar-btn.on { color: #4caf50; }
 .tabbar-btn.plus { font-size: 15px; font-weight: 600; margin-left: 2px; }
 
-/* Hint */
+/* Hint — lives inside the scroll area, scrolls away when tabs fill up */
 .tabbar-hint {
   color: var(--hint-text);
   font-size: 10px;
   font-weight: 400;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 8px;
-  opacity: 0;
-  transition: opacity 0.4s;
-  flex-shrink: 1;
-  min-width: 0;
+  padding: 0 10px;
+  flex-shrink: 0;
 }
-.tabbar-hint.show { opacity: 1; }
 
 /* Menu wrapper */
 .tabbar-menu-wrap {
