@@ -532,6 +532,12 @@ pub fn run() {
                 }
             });
 
+            // Log display scale for debugging
+            if let Some(main_win) = app.get_webview_window("main") {
+                let scale = main_win.scale_factor().unwrap_or(1.0);
+                log::info!("SETUP: display scale factor = {scale}");
+            }
+
             log::info!("SETUP: complete");
             Ok(())
         })
