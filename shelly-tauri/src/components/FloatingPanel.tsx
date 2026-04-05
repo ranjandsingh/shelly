@@ -13,6 +13,7 @@ interface FloatingPanelProps {
 
 const DEFAULT_WIDTH = 720;
 const DEFAULT_HEIGHT = 400;
+const TOP_OFFSET = 30; // below the notch
 
 export function FloatingPanel({
   isExpanded,
@@ -21,30 +22,29 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const appWindow = getCurrentWindow();
 
-  const positionTopCenter = useCallback(async () => {
+  const positionBelowNotch = useCallback(async () => {
     const monitor = await currentMonitor();
     if (!monitor) return;
     const screenWidth = monitor.size.width / monitor.scaleFactor;
     const x = Math.round((screenWidth - DEFAULT_WIDTH) / 2);
     await appWindow.setSize(new LogicalSize(DEFAULT_WIDTH, DEFAULT_HEIGHT));
-    await appWindow.setPosition(new LogicalPosition(x, 0));
+    await appWindow.setPosition(new LogicalPosition(x, TOP_OFFSET));
   }, [appWindow]);
 
-  // Show/hide based on expanded state
   useEffect(() => {
     const update = async () => {
       if (isExpanded) {
-        console.log("[FloatingPanel] showing");
-        await positionTopCenter();
+        console.log("[FloatingPanel] showing main window");
+        await positionBelowNotch();
         await appWindow.show();
         await appWindow.setFocus();
       } else {
-        console.log("[FloatingPanel] hiding");
+        console.log("[FloatingPanel] hiding main window");
         await appWindow.hide();
       }
     };
     update();
-  }, [isExpanded, positionTopCenter, appWindow]);
+  }, [isExpanded, positionBelowNotch, appWindow]);
 
   // Start hidden
   useEffect(() => {

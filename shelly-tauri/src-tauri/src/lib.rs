@@ -10,7 +10,7 @@ mod status_parser;
 mod tray;
 
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use uuid::Uuid;
 
 use pty::PtyManager;
@@ -234,6 +234,32 @@ pub fn run() {
             log::info!("SETUP: initializing tray...");
             tray::setup_tray(app.handle())?;
             log::info!("SETUP: tray initialized");
+
+            // Position notch window at top-center of screen
+            if let Some(notch) = app.get_webview_window("notch") {
+                log::info!("SETUP: positioning notch window...");
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(monitor) = handle.primary_monitor().ok().flatten() {
+                        let screen_width = monitor.size().width as f64 / monitor.scale_factor();
+                        let x = ((screen_width - 140.0) / 2.0) as i32;
+                        let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+                        log::info!("SETUP: notch positioned at x={x}");
+                    }
+                    let _ = notch.show();
+                });
+            }
+
+            // Listen for notch-clicked event -> toggle main panel
+            let handle = app.handle().clone();
+            app.listen("notch-clicked", move |_event| {
+                log::info!("SETUP: notch-clicked received, toggling panel");
+                let _ = handle.emit("tray-toggle-panel", ());
+                if let Some(window) = handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            });
 
             // Register default hotkey: CmdOrCtrl+`
             log::info!("SETUP: registering global shortcut CmdOrCtrl+`...");

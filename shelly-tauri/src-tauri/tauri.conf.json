@@ -22,6 +22,20 @@
         "resizable": true,
         "visible": false,
         "skipTaskbar": true
+      },
+      {
+        "label": "notch",
+        "title": "",
+        "width": 140,
+        "height": 28,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "visible": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "url": "notch.html"
       }
     ],
     "security": {
