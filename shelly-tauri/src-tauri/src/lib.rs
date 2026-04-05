@@ -1,5 +1,6 @@
 mod pty;
 mod session_store;
+mod settings;
 mod shell_detect;
 mod sleep_prevention;
 mod sound;
@@ -19,6 +20,7 @@ struct AppState {
     pty_manager: PtyManager,
     session_store: SessionStore,
     status_parser: StatusParser,
+    settings: Mutex<settings::AppSettings>,
     default_shell: Mutex<String>,
 }
 
@@ -129,6 +131,21 @@ fn parse_visible_text(session_id: String, text: String, state: State<'_, AppStat
     state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
 }
 
+// --- Settings commands ---
+
+#[tauri::command]
+fn get_settings(state: State<'_, AppState>) -> settings::AppSettings {
+    state.settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppState>) {
+    settings::save_settings(&new_settings);
+    // Apply default shell change
+    *state.default_shell.lock().unwrap() = new_settings.default_shell.clone();
+    *state.settings.lock().unwrap() = new_settings;
+}
+
 // --- Shell commands ---
 
 #[tauri::command]
@@ -150,7 +167,8 @@ fn set_default_shell(path: String, state: State<'_, AppState>) {
 pub fn run() {
     env_logger::init();
 
-    let default_shell = detect_default_shell();
+    let app_settings = settings::load_settings();
+    let default_shell = app_settings.default_shell.clone();
     log::info!("Default shell: {default_shell}");
 
     let session_store = SessionStore::new();
@@ -161,6 +179,7 @@ pub fn run() {
             pty_manager: PtyManager::new(),
             session_store,
             status_parser: StatusParser::new(),
+            settings: Mutex::new(app_settings),
             default_shell: Mutex::new(default_shell),
         })
         .plugin(tauri_plugin_opener::init())
@@ -210,6 +229,8 @@ pub fn run() {
             rename_session,
             get_session,
             parse_visible_text,
+            get_settings,
+            save_app_settings,
             get_available_shells_cmd,
             get_default_shell,
             set_default_shell,
