@@ -1,6 +1,7 @@
 mod pty;
 mod session_store;
 mod shell_detect;
+mod status_parser;
 mod tray;
 
 use std::sync::Mutex;
@@ -10,10 +11,12 @@ use uuid::Uuid;
 use pty::PtyManager;
 use session_store::{SessionStore, TerminalSession};
 use shell_detect::{ShellInfo, detect_default_shell, get_available_shells};
+use status_parser::StatusParser;
 
 struct AppState {
     pty_manager: PtyManager,
     session_store: SessionStore,
+    status_parser: StatusParser,
     default_shell: Mutex<String>,
 }
 
@@ -117,6 +120,13 @@ fn get_session(session_id: String, state: State<'_, AppState>) -> Option<Termina
     state.session_store.get_session(&session_id)
 }
 
+// --- Status commands ---
+
+#[tauri::command]
+fn parse_visible_text(session_id: String, text: String, state: State<'_, AppState>, app: AppHandle) {
+    state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
+}
+
 // --- Shell commands ---
 
 #[tauri::command]
@@ -148,6 +158,7 @@ pub fn run() {
         .manage(AppState {
             pty_manager: PtyManager::new(),
             session_store,
+            status_parser: StatusParser::new(),
             default_shell: Mutex::new(default_shell),
         })
         .plugin(tauri_plugin_opener::init())
@@ -196,6 +207,7 @@ pub fn run() {
             remove_session,
             rename_session,
             get_session,
+            parse_visible_text,
             get_available_shells_cmd,
             get_default_shell,
             set_default_shell,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export interface TerminalSession {
   id: string;
@@ -26,6 +27,25 @@ export function useSessionStore() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Listen for status changes from Rust
+  useEffect(() => {
+    const unlisten = listen<{ sessionId: string; status: string }>(
+      "status-changed",
+      (event) => {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === event.payload.sessionId
+              ? { ...s, status: event.payload.status }
+              : s
+          )
+        );
+      }
+    );
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
 
   const addSession = useCallback(
     async (name?: string, projectPath?: string, workingDir?: string) => {

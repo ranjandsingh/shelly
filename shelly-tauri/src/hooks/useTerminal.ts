@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { invoke } from "@tauri-apps/api/core";
 import {
   createTerminal as createPty,
   writeInput,
@@ -21,6 +22,7 @@ export function useTerminal(
   const fitAddonRef = useRef<FitAddon | null>(null);
   const unlistenRef = useRef<(() => void) | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
   const currentSessionRef = useRef<string | null>(null);
 
   // Initialize xterm once
@@ -160,6 +162,24 @@ export function useTerminal(
       }
 
       term.focus();
+
+      // Start 500ms status polling
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollTimerRef.current = window.setInterval(async () => {
+        const t = termRef.current;
+        const sid = currentSessionRef.current;
+        if (!t || !sid) return;
+        const buffer = t.buffer.active;
+        const rows = t.rows;
+        const baseY = buffer.baseY;
+        const lines: string[] = [];
+        for (let i = baseY; i < baseY + rows; i++) {
+          const line = buffer.getLine(i);
+          if (line) lines.push(line.translateToString(true));
+        }
+        const text = lines.join("\n");
+        await invoke("parse_visible_text", { sessionId: sid, text });
+      }, 500);
     },
     []
   );
@@ -174,6 +194,10 @@ export function useTerminal(
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
+      }
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
     };
   }, [sessionId, workingDirectory, attachSession]);
