@@ -332,12 +332,10 @@ fn quit_shelly(app: AppHandle) {
 fn shrink_notch(app: AppHandle) {
     log::info!("CMD shrink_notch");
     if let Some(notch) = app.get_webview_window("notch") {
-        // Shrink to tiny pill
-        let _ = notch.set_size(tauri::LogicalSize::new(50.0, 8.0));
-        // Re-center
+        let _ = notch.set_size(tauri::LogicalSize::new(40.0, 6.0));
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
-            let x = ((sw - 50.0) / 2.0) as i32;
+            let x = ((sw - 40.0) / 2.0) as i32;
             let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
         }
     }
@@ -347,10 +345,10 @@ fn shrink_notch(app: AppHandle) {
 fn expand_notch(app: AppHandle) {
     log::info!("CMD expand_notch");
     if let Some(notch) = app.get_webview_window("notch") {
-        let _ = notch.set_size(tauri::LogicalSize::new(100.0, 24.0));
+        let _ = notch.set_size(tauri::LogicalSize::new(80.0, 14.0));
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
-            let x = ((sw - 100.0) / 2.0) as i32;
+            let x = ((sw - 80.0) / 2.0) as i32;
             let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
         }
     }
@@ -437,7 +435,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     if let Some(monitor) = handle.primary_monitor().ok().flatten() {
                         let screen_width = monitor.size().width as f64 / monitor.scale_factor();
-                        let x = ((screen_width - 100.0) / 2.0) as i32;
+                        let x = ((screen_width - 80.0) / 2.0) as i32;
                         let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
                         log::info!("SETUP: notch positioned at x={x}");
                     }
