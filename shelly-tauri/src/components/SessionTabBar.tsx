@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalSession } from "../hooks/useSessionStore";
 import { SettingsMenu } from "./SettingsMenu";
@@ -52,11 +52,53 @@ export function SessionTabBar({
   const [showMenu, setShowMenu] = useState(false);
   const [hint, setHint] = useState("");
   const [hintVisible, setHintVisible] = useState(false);
+  const [tabsOverflow, setTabsOverflow] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const hintIndex = useRef(Math.floor(Math.random() * HINTS.length));
   const menuRef = useRef<HTMLDivElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
 
+  // Check if tabs overflow
+  const checkOverflow = useCallback(() => {
+    const el = tabListRef.current;
+    if (!el) return;
+    const overflows = el.scrollWidth > el.clientWidth + 2;
+    setTabsOverflow(overflows);
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  }, []);
+
+  // Re-check overflow on session changes and resize
+  useEffect(() => {
+    checkOverflow();
+    const observer = new ResizeObserver(checkOverflow);
+    if (tabListRef.current) observer.observe(tabListRef.current);
+    return () => observer.disconnect();
+  }, [sessions, checkOverflow]);
+
+  // Scroll tabs with mouse wheel
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    const el = tabListRef.current;
+    if (!el) return;
+    el.scrollLeft += e.deltaY > 0 ? 80 : -80;
+    checkOverflow();
+  }, [checkOverflow]);
+
+  const scrollLeft = () => {
+    const el = tabListRef.current;
+    if (el) { el.scrollLeft -= 120; checkOverflow(); }
+  };
+
+  const scrollRight = () => {
+    const el = tabListRef.current;
+    if (el) { el.scrollLeft += 120; checkOverflow(); }
+  };
+
+  // Rotating hints — only when tabs don't overflow
   useEffect(() => {
     const showHint = () => {
+      if (tabsOverflow) { setHintVisible(false); return; }
       setHint(`Tip: ${HINTS[hintIndex.current]}`);
       setHintVisible(true);
       setTimeout(() => {
@@ -67,8 +109,9 @@ export function SessionTabBar({
     showHint();
     const interval = setInterval(showHint, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tabsOverflow]);
 
+  // Close menu on outside click
   useEffect(() => {
     if (!showMenu) return;
     const handler = (e: MouseEvent) => {
@@ -89,7 +132,6 @@ export function SessionTabBar({
   const handleOpenFolder = async () => {
     try {
       await invoke("pick_folder");
-      // Refresh to pick up the new session created by Rust
       onRefresh();
     } catch (e) {
       console.error("[SessionTabBar] pick_folder error:", e);
@@ -102,7 +144,20 @@ export function SessionTabBar({
         <img src="/icon.png" alt="" className="app-icon-img" />
       </div>
 
-      <div className="tab-list">
+      {/* Scroll left arrow */}
+      {canScrollLeft && (
+        <button className="tab-scroll-btn" onClick={scrollLeft} title="Scroll tabs left">
+          &#x276E;
+        </button>
+      )}
+
+      {/* Scrollable tabs */}
+      <div
+        className="tab-list"
+        ref={tabListRef}
+        onWheel={handleWheel}
+        onScroll={checkOverflow}
+      >
         {sessions.map((s) => (
           <div
             key={s.id}
@@ -125,11 +180,22 @@ export function SessionTabBar({
             )}
           </div>
         ))}
-        <button className="tab-bar-btn" onClick={onAdd} title="New session">+</button>
+        <button className="tab-bar-btn tab-add-btn" onClick={onAdd} title="New session">+</button>
       </div>
 
-      <div className={`hint-text ${hintVisible ? "visible" : ""}`}>{hint}</div>
+      {/* Scroll right arrow */}
+      {canScrollRight && (
+        <button className="tab-scroll-btn" onClick={scrollRight} title="Scroll tabs right">
+          &#x276F;
+        </button>
+      )}
 
+      {/* Hint text — hidden when tabs overflow */}
+      {!tabsOverflow && (
+        <div className={`hint-text ${hintVisible ? "visible" : ""}`}>{hint}</div>
+      )}
+
+      {/* Right-side buttons */}
       <button className="tab-bar-btn" onClick={handleOpenFolder} title="Open folder">
         &#x1F4C2;
       </button>

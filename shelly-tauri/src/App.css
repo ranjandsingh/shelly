@@ -102,6 +102,7 @@ html, body, #root {
   flex: 1;
   min-width: 0;
   scrollbar-width: none;
+  scroll-behavior: smooth;
 }
 .tab-list::-webkit-scrollbar { display: none; }
 
@@ -186,6 +187,24 @@ html, body, #root {
 }
 
 /* Tab bar buttons */
+/* Tab scroll arrows */
+.tab-scroll-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.tab-scroll-btn:hover { background: var(--tab-active-bg); color: var(--tab-active-text); }
+
+.tab-add-btn {
+  flex-shrink: 0;
+}
+
 .tab-bar-btn {
   background: none;
   border: none;
