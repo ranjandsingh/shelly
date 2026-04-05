@@ -21,13 +21,14 @@
         "alwaysOnTop": true,
         "resizable": true,
         "visible": false,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "shadow": false
       },
       {
         "label": "notch",
         "title": "",
-        "width": 80,
-        "height": 14,
+        "width": 110,
+        "height": 28,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

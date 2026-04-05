@@ -15,36 +15,60 @@
   }
   body {
     display: flex;
-    align-items: flex-start;
     justify-content: center;
+    align-items: flex-start;
+    padding-top: 0;
   }
+
+  /* === Greeting state (centered, full width) === */
+  .greeting-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    height: 100%;
+    background: rgba(35, 35, 35, 0.95);
+    border-radius: 0 0 10px 10px;
+    transition: opacity 0.4s, transform 0.4s;
+  }
+  .greeting-state.fading {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  .greeting-state.hidden { display: none; }
+  .greeting-icon { width: 16px; height: 16px; border-radius: 3px; }
+  .greeting-text {
+    color: #ddd; font-size: 12px; font-weight: 600;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  /* === Pill state (small, slightly transparent, padding-top for drop effect) === */
+  .pill-state {
+    display: none;
+    width: 100%;
+    height: 100%;
+    padding-top: 2px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .pill-state.active { display: flex; }
   .pill {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    width: 100%;
-    height: 100%;
-    background: #2d2d2d;
-    border-radius: 0 0 8px 8px;
+    gap: 3px;
+    padding: 0 8px;
+    height: calc(100% - 2px);
+    background: rgba(45, 45, 45, 0.75);
+    border-radius: 0 0 6px 6px;
+    transition: background 0.15s;
   }
-  .greeting-wrap {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    overflow: hidden;
-    max-width: 120px;
-    transition: max-width 0.5s ease, opacity 0.4s;
-  }
-  .greeting-wrap.hidden { max-width: 0; opacity: 0; }
-  .greeting-icon { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-  .greeting-text {
-    color: #bbb; font-size: 9px; font-weight: 500;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    white-space: nowrap;
+  .pill:hover {
+    background: rgba(60, 60, 60, 0.9);
   }
   .dots { display: flex; gap: 3px; align-items: center; }
-  .dot { width: 4px; height: 4px; border-radius: 50%; background: #555; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; background: #666; }
   .dot.working { background: #ffa726; }
   .dot.waiting { background: #ffa726; }
   .dot.completed { background: #4caf50; }
@@ -58,25 +82,39 @@
 </style>
 </head>
 <body>
-  <div class="pill">
-    <div class="greeting-wrap" id="greeting">
-      <img class="greeting-icon" src="icon.png" alt="">
-      <span class="greeting-text">Hello!</span>
-    </div>
-    <div class="dots" id="dots"></div>
+  <!-- Greeting: shows on launch, centered -->
+  <div class="greeting-state" id="greeting">
+    <img class="greeting-icon" src="icon.png" alt="">
+    <span class="greeting-text">Hello!</span>
   </div>
+
+  <!-- Pill: shows after greeting, with padding-top drop -->
+  <div class="pill-state" id="pillState">
+    <div class="pill">
+      <div class="dots" id="dots"></div>
+    </div>
+  </div>
+
   <script>
+    const greetingEl = document.getElementById('greeting');
+    const pillEl = document.getElementById('pillState');
+
+    // After 3s: fade greeting, then shrink to pill
     setTimeout(() => {
-      document.getElementById('greeting').classList.add('hidden');
+      greetingEl.classList.add('fading');
       setTimeout(() => {
+        greetingEl.classList.add('hidden');
+        pillEl.classList.add('active');
         if (window.__TAURI__) window.__TAURI__.core.invoke('shrink_notch');
-      }, 500);
+      }, 400);
     }, 3000);
 
+    // Click -> toggle panel
     document.body.addEventListener('click', () => {
       if (window.__TAURI__) window.__TAURI__.core.invoke('toggle_panel');
     });
 
+    // Hover -> expand, show panel
     let hoverTimer = null;
     document.body.addEventListener('mouseenter', () => {
       if (window.__TAURI__) window.__TAURI__.core.invoke('expand_notch');
@@ -91,6 +129,7 @@
       }, 500);
     });
 
+    // Status updates
     if (window.__TAURI__) {
       window.__TAURI__.event.listen('sessions-updated', (event) => {
         const sessions = event.payload;
