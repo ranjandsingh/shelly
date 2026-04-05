@@ -1,3 +1,5 @@
+mod auto_start;
+mod ide_detector;
 mod pty;
 mod session_store;
 mod settings;
@@ -146,6 +148,20 @@ fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppSt
     *state.settings.lock().unwrap() = new_settings;
 }
 
+// --- Auto-start commands ---
+
+#[tauri::command]
+fn set_auto_start_cmd(enabled: bool) -> Result<(), String> {
+    auto_start::set_auto_start(enabled)
+}
+
+// --- IDE detection commands ---
+
+#[tauri::command]
+fn detect_ide_projects() -> Vec<ide_detector::DetectedProject> {
+    ide_detector::detect_projects()
+}
+
 // --- Shell commands ---
 
 #[tauri::command]
@@ -231,6 +247,8 @@ pub fn run() {
             parse_visible_text,
             get_settings,
             save_app_settings,
+            set_auto_start_cmd,
+            detect_ide_projects,
             get_available_shells_cmd,
             get_default_shell,
             set_default_shell,
