@@ -172,6 +172,20 @@ fn detect_ide_projects() -> Vec<ide_detector::DetectedProject> {
     ide_detector::detect_projects()
 }
 
+// --- Window commands ---
+
+#[tauri::command]
+fn position_panel_center(app: AppHandle) {
+    if let Some(main_win) = app.get_webview_window("main") {
+        if let Ok(Some(monitor)) = app.primary_monitor() {
+            let screen_width = monitor.size().width as f64 / monitor.scale_factor();
+            let x = ((screen_width - 720.0) / 2.0) as i32;
+            let _ = main_win.set_position(tauri::LogicalPosition::new(x, 30));
+            log::info!("CMD position_panel_center: x={x}, y=30");
+        }
+    }
+}
+
 // --- Shell commands ---
 
 #[tauri::command]
@@ -214,9 +228,20 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     log::info!("HOTKEY: {:?} state={:?}", shortcut, event.state);
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        log::info!("HOTKEY: emitting toggle-panel to React");
-                        // Just emit — let React handle show/hide/positioning
-                        let _ = app.emit("tray-toggle-panel", ());
+                        log::info!("HOTKEY: toggling panel");
+                        if let Some(main_win) = app.get_webview_window("main") {
+                            let visible = main_win.is_visible().unwrap_or(false);
+                            if visible {
+                                log::info!("HOTKEY: hiding main window");
+                                let _ = main_win.hide();
+                            } else {
+                                log::info!("HOTKEY: showing main window");
+                                let _ = main_win.show();
+                                let _ = main_win.set_focus();
+                            }
+                            // Also tell React so it syncs state
+                            let _ = app.emit("tray-toggle-panel", ());
+                        }
                     }
                 })
                 .build(),
@@ -252,9 +277,17 @@ pub fn run() {
                 let handle = app.handle().clone();
                 notch_win.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(true) = event {
-                        log::info!("NOTCH: clicked -> emitting toggle-panel to React");
-                        // Just emit — let React handle show/hide/positioning
-                        let _ = handle.emit("tray-toggle-panel", ());
+                        log::info!("NOTCH: clicked -> toggling panel");
+                        if let Some(main_win) = handle.get_webview_window("main") {
+                            let visible = main_win.is_visible().unwrap_or(false);
+                            if visible {
+                                let _ = main_win.hide();
+                            } else {
+                                let _ = main_win.show();
+                                let _ = main_win.set_focus();
+                            }
+                            let _ = handle.emit("tray-toggle-panel", ());
+                        }
                     }
                 });
             }
@@ -289,6 +322,7 @@ pub fn run() {
             parse_visible_text,
             get_settings,
             save_app_settings,
+            position_panel_center,
             set_auto_start_cmd,
             detect_ide_projects,
             get_available_shells_cmd,
