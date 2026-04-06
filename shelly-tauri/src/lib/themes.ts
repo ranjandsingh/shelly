@@ -26,8 +26,11 @@ export interface Theme {
     panelBg: string;
     tabBarBg: string;
     tabActiveBg: string;
+    tabHoverBg: string;
     tabText: string;
+    tabHoverText: string;
     tabActiveText: string;
+    tabActiveRing: string;
     dragBarBg: string;
     dragHandle: string;
     border: string;
@@ -65,17 +68,20 @@ export const THEMES: Record<string, Theme> = {
     },
     chrome: {
       panelBg: "#1e1e1e",
-      tabBarBg: "#1e1e1e",
-      tabActiveBg: "#2a2a2a",
+      tabBarBg: "#181818",
+      tabActiveBg: "#1e1e1e",
+      tabHoverBg: "#222",
       tabText: "#888",
+      tabHoverText: "#bbb",
       tabActiveText: "#e6e6e6",
-      dragBarBg: "#1e1e1e",
+      tabActiveRing: "rgba(255,255,255,0.06)",
+      dragBarBg: "#181818",
       dragHandle: "#444",
       border: "#333",
       menuBg: "#2a2a2a",
       menuText: "#ddd",
       menuHover: "#333",
-      hintText: "rgba(255,255,255,0.25)",
+      hintText: "rgba(255,255,255,0.40)",
     },
   },
   monokai: {
@@ -104,17 +110,20 @@ export const THEMES: Record<string, Theme> = {
     },
     chrome: {
       panelBg: "#272822",
-      tabBarBg: "#272822",
-      tabActiveBg: "#3e3d32",
-      tabText: "#75715e",
+      tabBarBg: "#21221c",
+      tabActiveBg: "#272822",
+      tabHoverBg: "#2d2e26",
+      tabText: "#8a8670",
+      tabHoverText: "#b5b09a",
       tabActiveText: "#f8f8f2",
-      dragBarBg: "#272822",
+      tabActiveRing: "rgba(248,248,242,0.06)",
+      dragBarBg: "#21221c",
       dragHandle: "#75715e",
       border: "#3e3d32",
       menuBg: "#3e3d32",
       menuText: "#f8f8f2",
       menuHover: "#49483e",
-      hintText: "rgba(248,248,242,0.2)",
+      hintText: "rgba(248,248,242,0.35)",
     },
   },
   dracula: {
@@ -143,17 +152,20 @@ export const THEMES: Record<string, Theme> = {
     },
     chrome: {
       panelBg: "#282a36",
-      tabBarBg: "#282a36",
-      tabActiveBg: "#44475a",
-      tabText: "#6272a4",
+      tabBarBg: "#21222e",
+      tabActiveBg: "#282a36",
+      tabHoverBg: "#2e3040",
+      tabText: "#6878a8",
+      tabHoverText: "#8e9cc5",
       tabActiveText: "#f8f8f2",
-      dragBarBg: "#282a36",
+      tabActiveRing: "rgba(248,248,242,0.06)",
+      dragBarBg: "#21222e",
       dragHandle: "#6272a4",
       border: "#44475a",
       menuBg: "#44475a",
       menuText: "#f8f8f2",
       menuHover: "#6272a4",
-      hintText: "rgba(248,248,242,0.2)",
+      hintText: "rgba(248,248,242,0.35)",
     },
   },
   "solarized-dark": {
@@ -182,17 +194,20 @@ export const THEMES: Record<string, Theme> = {
     },
     chrome: {
       panelBg: "#002b36",
-      tabBarBg: "#002b36",
-      tabActiveBg: "#073642",
-      tabText: "#586e75",
+      tabBarBg: "#00222c",
+      tabActiveBg: "#002b36",
+      tabHoverBg: "#003340",
+      tabText: "#5a7880",
+      tabHoverText: "#7a9ea6",
       tabActiveText: "#839496",
-      dragBarBg: "#002b36",
+      tabActiveRing: "rgba(131,148,150,0.08)",
+      dragBarBg: "#00222c",
       dragHandle: "#586e75",
       border: "#073642",
       menuBg: "#073642",
       menuText: "#839496",
       menuHover: "#002b36",
-      hintText: "rgba(131,148,150,0.25)",
+      hintText: "rgba(131,148,150,0.40)",
     },
   },
   "one-dark": {
@@ -221,17 +236,20 @@ export const THEMES: Record<string, Theme> = {
     },
     chrome: {
       panelBg: "#282c34",
-      tabBarBg: "#282c34",
-      tabActiveBg: "#3e4451",
-      tabText: "#5c6370",
+      tabBarBg: "#21252b",
+      tabActiveBg: "#282c34",
+      tabHoverBg: "#2c3039",
+      tabText: "#7a8290",
+      tabHoverText: "#9aa2b0",
       tabActiveText: "#abb2bf",
-      dragBarBg: "#282c34",
+      tabActiveRing: "rgba(171,178,191,0.06)",
+      dragBarBg: "#21252b",
       dragHandle: "#5c6370",
       border: "#3e4451",
       menuBg: "#3e4451",
       menuText: "#abb2bf",
       menuHover: "#4b5263",
-      hintText: "rgba(171,178,191,0.2)",
+      hintText: "rgba(171,178,191,0.40)",
     },
   },
   "vs-light": {
@@ -259,18 +277,21 @@ export const THEMES: Record<string, Theme> = {
       brightWhite: "#a5a5a5",
     },
     chrome: {
-      panelBg: "#f3f3f3",
-      tabBarBg: "#f3f3f3",
+      panelBg: "#ffffff",
+      tabBarBg: "#e8e8e8",
       tabActiveBg: "#ffffff",
-      tabText: "#888",
+      tabHoverBg: "#efefef",
+      tabText: "#777",
+      tabHoverText: "#444",
       tabActiveText: "#333",
-      dragBarBg: "#f3f3f3",
+      tabActiveRing: "rgba(0,0,0,0.06)",
+      dragBarBg: "#e8e8e8",
       dragHandle: "#ccc",
       border: "#e0e0e0",
       menuBg: "#ffffff",
       menuText: "#333",
       menuHover: "#e8e8e8",
-      hintText: "rgba(0,0,0,0.2)",
+      hintText: "rgba(0,0,0,0.35)",
     },
   },
 };
@@ -281,8 +302,11 @@ export function applyThemeToCSS(theme: Theme) {
   root.style.setProperty("--panel-bg", c.panelBg);
   root.style.setProperty("--tab-bar-bg", c.tabBarBg);
   root.style.setProperty("--tab-active-bg", c.tabActiveBg);
+  root.style.setProperty("--tab-hover-bg", c.tabHoverBg);
   root.style.setProperty("--tab-text", c.tabText);
+  root.style.setProperty("--tab-hover-text", c.tabHoverText);
   root.style.setProperty("--tab-active-text", c.tabActiveText);
+  root.style.setProperty("--tab-active-ring", c.tabActiveRing);
   root.style.setProperty("--drag-bar-bg", c.dragBarBg);
   root.style.setProperty("--drag-handle", c.dragHandle);
   root.style.setProperty("--border-color", c.border);

@@ -29,28 +29,143 @@ struct AppState {
     is_pinned: Mutex<bool>,
     hide_cooldown: Mutex<Option<std::time::Instant>>,
     dialog_open: Mutex<bool>,
+    has_shown_once: Mutex<bool>,
+    animating: Mutex<bool>,
+}
+
+const PANEL_W: f64 = 720.0;
+const PANEL_H: f64 = 400.0;
+
+fn get_screen_width(app: &AppHandle) -> f64 {
+    if let Ok(Some(monitor)) = app.primary_monitor() {
+        monitor.size().width as f64 / monitor.scale_factor()
+    } else {
+        1920.0
+    }
+}
+
+fn center_x(sw: f64, w: f64) -> i32 {
+    ((sw - w) / 2.0) as i32
+}
+
+fn is_animating(app: &AppHandle) -> bool {
+    app.try_state::<AppState>().map(|s| *safe_lock(&s.animating)).unwrap_or(false)
+}
+
+fn set_animating(app: &AppHandle, val: bool) {
+    if let Some(state) = app.try_state::<AppState>() {
+        *safe_lock(&state.animating) = val;
+    }
 }
 
 fn do_show_panel(app: &AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if main_win.is_visible().unwrap_or(false) { return; }
-        if let Ok(Some(monitor)) = app.primary_monitor() {
-            let sw = monitor.size().width as f64 / monitor.scale_factor();
-            let x = ((sw - 720.0) / 2.0) as i32;
-            let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
-        }
-        let _ = main_win.show();
-        let _ = main_win.set_focus();
+        if is_animating(app) { return; }
+        set_animating(app, true);
+
+        let sw = get_screen_width(app);
+        let first_show = if let Some(state) = app.try_state::<AppState>() {
+            let mut flag = safe_lock(&state.has_shown_once);
+            if !*flag { *flag = true; true } else { false }
+        } else { false };
+
+        // Animation start state: narrow (like notch), above screen
+        let start_w = PANEL_W - 200.0;
+        let start_y: f64 = -30.0;
+
+        // Position offscreen BEFORE showing — no flash
+        let _ = main_win.set_position(tauri::LogicalPosition::new(center_x(sw, start_w), -400));
+        let _ = main_win.set_size(tauri::LogicalSize::new(start_w, PANEL_H));
+
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            if first_show {
+                // Let WebView2 fully init while window is offscreen
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            // Move to animation start position, then show
+            if let Some(win) = handle.get_webview_window("main") {
+                let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, start_w), start_y as i32));
+                let _ = win.set_size(tauri::LogicalSize::new(start_w, PANEL_H));
+                // Small delay to let position apply before show
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+
+            let steps: u64 = 16;
+            let total_ms: u64 = 250;
+
+            for i in 1..=steps {
+                let t = i as f64 / steps as f64;
+                let ease = if t < 0.8 {
+                    let t2 = t / 0.8;
+                    1.0 - (1.0 - t2).powi(3)
+                } else {
+                    let t2 = (t - 0.8) / 0.2;
+                    1.0 + 0.03 * (1.0 - t2) * (std::f64::consts::PI * t2).sin()
+                };
+
+                let y = start_y + (0.0 - start_y) * ease;
+                let w = start_w + (PANEL_W - start_w) * ease.min(1.0);
+
+                if let Some(win) = handle.get_webview_window("main") {
+                    let _ = win.set_size(tauri::LogicalSize::new(w, PANEL_H));
+                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), y as i32));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
+            }
+            // Snap to final
+            if let Some(win) = handle.get_webview_window("main") {
+                let _ = win.set_size(tauri::LogicalSize::new(PANEL_W, PANEL_H));
+                let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, PANEL_W), 0));
+            }
+            set_animating(&handle, false);
+        });
         let _ = app.emit("panel-visibility", true);
-        log::info!("do_show_panel: shown");
+        log::info!("do_show_panel: expanding in");
     }
 }
 
 fn do_hide_panel(app: &AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
-        let _ = main_win.hide();
-        let _ = app.emit("panel-visibility", false);
-        log::info!("do_hide_panel: hidden");
+        if !main_win.is_visible().unwrap_or(false) { return; }
+        if is_animating(app) { return; }
+        set_animating(app, true);
+
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            let steps: u64 = 10;
+            let total_ms: u64 = 140;
+            let sw = get_screen_width(&handle);
+            let end_w = PANEL_W - 150.0;
+            let end_y: f64 = -25.0;
+
+            for i in 1..=steps {
+                let t = i as f64 / steps as f64;
+                let ease = t * t;
+
+                let y = end_y * ease;
+                let w = PANEL_W + (end_w - PANEL_W) * ease;
+
+                if let Some(win) = handle.get_webview_window("main") {
+                    let _ = win.set_size(tauri::LogicalSize::new(w, PANEL_H));
+                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), y as i32));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
+            }
+            // Hide, then reset size while hidden (no flash)
+            if let Some(win) = handle.get_webview_window("main") {
+                let _ = win.hide();
+                let _ = handle.emit("panel-visibility", false);
+                // Reset after hide — window is invisible so no flash
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                let _ = win.set_size(tauri::LogicalSize::new(PANEL_W, PANEL_H));
+            }
+            set_animating(&handle, false);
+        });
+        log::info!("do_hide_panel: shrinking out");
     }
 }
 
@@ -430,12 +545,10 @@ fn expand_notch(app: AppHandle) {
 #[tauri::command]
 fn position_panel_center(app: AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
-        if let Ok(Some(monitor)) = app.primary_monitor() {
-            let screen_width = monitor.size().width as f64 / monitor.scale_factor();
-            let x = ((screen_width - 720.0) / 2.0) as i32;
-            let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
-            log::info!("CMD position_panel_center: x={x}, y=0");
-        }
+        let sw = get_screen_width(&app);
+        let x = center_x(sw, PANEL_W);
+        let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
+        log::info!("CMD position_panel_center: x={x}, y=0");
     }
 }
 
@@ -486,6 +599,8 @@ pub fn run() {
             is_pinned: Mutex::new(false),
             hide_cooldown: Mutex::new(None),
             dialog_open: Mutex::new(false),
+            has_shown_once: Mutex::new(false),
+            animating: Mutex::new(false),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -500,10 +615,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
+            do_show_panel(app);
         }))
         .setup(|app| {
             log::info!("SETUP: initializing tray...");
@@ -535,6 +647,11 @@ pub fn run() {
                             if let Some(state) = handle_blur.try_state::<AppState>() {
                                 let pinned = *safe_lock(&state.is_pinned);
                                 if pinned {
+                                    return;
+                                }
+                                // Suppress during animation
+                                if *safe_lock(&state.animating) {
+                                    log::info!("MAIN: blur suppressed (animating)");
                                     return;
                                 }
                                 // Check if dialog is open

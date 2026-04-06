@@ -1,16 +1,19 @@
 :root {
   --panel-bg: #1e1e1e;
-  --tab-bar-bg: #1e1e1e;
-  --tab-active-bg: #2a2a2a;
+  --tab-bar-bg: #181818;
+  --tab-active-bg: #1e1e1e;
+  --tab-hover-bg: #222;
   --tab-text: #888;
+  --tab-hover-text: #bbb;
   --tab-active-text: #e6e6e6;
-  --drag-bar-bg: #1e1e1e;
+  --tab-active-ring: rgba(255,255,255,0.06);
+  --drag-bar-bg: #181818;
   --drag-handle: #444;
   --border-color: #333;
   --menu-bg: #2a2a2a;
   --menu-text: #ddd;
   --menu-hover: #333;
-  --hint-text: rgba(255,255,255,0.25);
+  --hint-text: rgba(255,255,255,0.40);
   --terminal-bg: #1e1e1e;
 }
 
@@ -50,7 +53,7 @@ html, body, #root {
 
 /* ===== Drag Bar ===== */
 .drag-bar {
-  height: 8px;
+  height: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -60,24 +63,27 @@ html, body, #root {
 }
 .drag-bar:active { cursor: grabbing; }
 .drag-handle {
-  width: 36px;
+  width: 32px;
   height: 3px;
   background: var(--drag-handle);
   border-radius: 2px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
 }
+.drag-bar:hover .drag-handle { opacity: 0.9; }
 .settings-btn { display: none; } /* moved to tab bar */
 
 /* ===== Tab Bar (rewritten) ===== */
 .tabbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   background: var(--tab-bar-bg);
   height: 38px;
   padding: 0 6px;
   flex-shrink: 0;
   user-select: none;
   -webkit-user-select: none;
-  gap: 2px;
+  gap: 0;
 }
 
 .tabbar-icon {
@@ -86,6 +92,7 @@ html, body, #root {
   border-radius: 4px;
   flex-shrink: 0;
   margin-right: 4px;
+  align-self: center;
 }
 
 /* Scroll arrows */
@@ -99,14 +106,15 @@ html, body, #root {
   border-radius: 4px;
   flex-shrink: 0;
   line-height: 1;
+  align-self: center;
 }
-.tabbar-arrow:hover { background: var(--tab-active-bg); color: var(--tab-active-text); }
+.tabbar-arrow:hover { background: var(--tab-hover-bg); color: var(--tab-active-text); }
 
 /* Scrollable tab area */
 .tabbar-scroll {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: stretch;
+  gap: 0;
   overflow-x: auto;
   overflow-y: hidden;
   flex: 1;
@@ -120,22 +128,29 @@ html, body, #root {
 .tabbar-tab {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
+  gap: 6px;
+  padding: 0 10px;
   background: transparent;
-  border-radius: 5px;
+  border-radius: 6px 6px 0 0;
   color: var(--tab-text);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background 0.1s;
+  transition: background 0.18s ease, color 0.18s ease;
+  position: relative;
+  margin: 4px 1px 4px;
 }
-.tabbar-tab:hover { background: var(--tab-active-bg); }
+.tabbar-tab:hover {
+  background: var(--tab-hover-bg);
+  color: var(--tab-hover-text);
+  margin-bottom: 0;
+}
 .tabbar-tab.active {
   background: var(--tab-active-bg);
   color: var(--tab-active-text);
+  margin-bottom: 0;
 }
 
 .tabbar-tab-name {
@@ -144,17 +159,29 @@ html, body, #root {
   text-overflow: ellipsis;
 }
 
+/* X close button */
 .tabbar-tab-x {
   background: none;
   border: none;
-  color: #555;
+  color: transparent;
   cursor: pointer;
-  font-size: 9px;
-  padding: 1px 3px;
-  border-radius: 3px;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
   line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
 }
-.tabbar-tab-x:hover { background: #444; color: #e6e6e6; }
+.tabbar-tab:hover .tabbar-tab-x { color: var(--tab-text); }
+.tabbar-tab.active .tabbar-tab-x { color: var(--tab-text); }
+.tabbar-tab-x:hover {
+  background: rgba(239, 83, 80, 0.2);
+  color: #ef5350 !important;
+}
 
 /* Status icons */
 .st-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4caf50; flex-shrink: 0; }
@@ -176,32 +203,45 @@ html, body, #root {
 .tabbar-btn {
   background: none;
   border: none;
-  color: var(--tab-text);
+  color: var(--tab-hover-text);
   cursor: pointer;
   font-size: 14px;
-  padding: 4px 7px;
+  padding: 5px 7px;
   border-radius: 4px;
   flex-shrink: 0;
   line-height: 1;
+  align-self: center;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.tabbar-btn:hover { background: var(--tab-active-bg); color: var(--tab-active-text); }
+.tabbar-btn svg { display: block; }
+.tabbar-btn:hover { background: var(--tab-hover-bg); color: var(--tab-active-text); }
 .tabbar-btn.on { color: #4caf50; }
-.tabbar-btn.plus { font-size: 15px; font-weight: 600; margin-left: 2px; }
+.tabbar-btn.pin-btn.on {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.12);
+  border-radius: 4px;
+}
+.tabbar-btn.plus { font-size: 16px; font-weight: 600; margin-left: 2px; margin-top: auto; margin-bottom: auto; }
 
 /* Hint — lives inside the scroll area, scrolls away when tabs fill up */
 .tabbar-hint {
   color: var(--hint-text);
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 400;
   white-space: nowrap;
   padding: 0 10px;
   flex-shrink: 0;
+  align-self: center;
 }
 
 /* Menu wrapper */
 .tabbar-menu-wrap {
   position: relative;
   flex-shrink: 0;
+  align-self: center;
 }
 
 /* ===== Settings Menu ===== */
@@ -321,9 +361,7 @@ html, body, #root {
 
 /* ===== Separator ===== */
 .tab-separator {
-  height: 1px;
-  background: #333;
-  flex-shrink: 0;
+  display: none;
 }
 
 /* ===== Terminal Area ===== */
@@ -333,4 +371,21 @@ html, body, #root {
   background: var(--terminal-bg);
   border-radius: 0 0 10px 10px;
   overflow: hidden;
+  position: relative;
 }
+
+/* Tab-switch crossfade */
+.terminal-area .terminal-crossfade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--terminal-bg);
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  z-index: 10;
+  border-radius: 0 0 10px 10px;
+}
+.terminal-area .terminal-crossfade.active {
+  opacity: 1;
+}
+

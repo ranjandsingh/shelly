@@ -30,6 +30,7 @@ export function useTerminal(
   const currentSessionRef = useRef<string | null>(null);
   const sessionExitedRef = useRef<boolean>(false);
   const lastWorkDirRef = useRef<string>("");
+  const replayingRef = useRef<boolean>(false);
 
   // Initialize xterm once
   useEffect(() => {
@@ -59,6 +60,8 @@ export function useTerminal(
     // Handle input
     term.onData((data) => {
       if (!currentSessionRef.current) return;
+      // Suppress terminal responses (e.g. cursor position \x1b[row;colR) during buffer replay
+      if (replayingRef.current) return;
 
       // If process exited and user presses Enter, restart the terminal
       if (sessionExitedRef.current && (data === "\r" || data === "\n")) {
@@ -191,6 +194,7 @@ export function useTerminal(
       if (exists) {
         // Existing terminal: replay buffer
         await suppressLiveOutput(newSessionId, true);
+        replayingRef.current = true;
         term.reset();
         fitAddon.fit();
 
@@ -199,6 +203,9 @@ export function useTerminal(
           const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
           term.write(bytes);
         }
+        // Allow xterm to finish processing before re-enabling input
+        await new Promise((r) => setTimeout(r, 50));
+        replayingRef.current = false;
 
         // Subscribe to live output
         unlistenRef.current = (await onTerminalOutput(

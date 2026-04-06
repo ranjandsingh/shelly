@@ -60,11 +60,16 @@
     height: 18px;
     min-width: 48px;
     padding: 0 8px;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .bar.pill.active { display: flex; }
   .bar.pill.has-icon {
     height: 30px;
     min-width: 84px;
+  }
+  .bar.pill.expanded {
+    background: rgba(0, 0, 0, 0.65);
+    border-color: rgba(255, 255, 255, 0.2);
   }
 
   /* === Mascot icon in pill === */
@@ -185,19 +190,33 @@
       if (window.__TAURI__) window.__TAURI__.core.invoke('toggle_panel');
     });
 
-    // Hover -> expand, show panel
+    // Hover -> expand, show panel (debounced to prevent flicker)
     let hoverTimer = null;
+    let shrinkTimer = null;
+    let isExpanded = false;
+
     document.body.addEventListener('mouseenter', () => {
-      if (window.__TAURI__) window.__TAURI__.core.invoke('expand_notch');
+      // Cancel any pending shrink
+      if (shrinkTimer) { clearTimeout(shrinkTimer); shrinkTimer = null; }
+
+      if (!isExpanded) {
+        isExpanded = true;
+        pillEl.classList.add('expanded');
+        if (window.__TAURI__) window.__TAURI__.core.invoke('expand_notch');
+      }
       hoverTimer = setTimeout(() => {
         if (window.__TAURI__) window.__TAURI__.core.invoke('show_panel');
       }, 300);
     });
     document.body.addEventListener('mouseleave', () => {
       if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-      setTimeout(() => {
+      // Delay shrink to avoid flicker from resize-triggered mouseleave
+      shrinkTimer = setTimeout(() => {
+        isExpanded = false;
+        pillEl.classList.remove('expanded');
         if (window.__TAURI__) window.__TAURI__.core.invoke('shrink_notch');
-      }, 500);
+        shrinkTimer = null;
+      }, 400);
     });
 
     // Determine which icon to show based on aggregate status

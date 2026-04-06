@@ -28,7 +28,7 @@ const HINTS = [
 ];
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  Idle: <span className="st-dot" />,
+  Idle: null,
   Working: <span className="st-spin" />,
   WaitingForInput: <span className="st-tri" />,
   TaskCompleted: <span className="st-chk">&#x2713;</span>,
@@ -58,6 +58,8 @@ export function SessionTabBar({
     let unlisten: (() => void) | null = null;
     import("@tauri-apps/api/event").then(({ listen }) => {
       listen<boolean>("panel-visibility", (e) => {
+        setShowMenu(false);
+        setContextMenu(null);
         if (e.payload) invoke<boolean>("get_pinned").then(setIsPinned);
       }).then((fn) => { unlisten = fn; });
     });
@@ -232,10 +234,22 @@ export function SessionTabBar({
       )}
 
       {/* Right buttons — always visible, never affected by overflow */}
-      <button className="tabbar-btn" onClick={async () => { try { await invoke("pick_folder"); onRefresh(); } catch {} }} title="Open folder">&#x1F4C2;</button>
-      <button className={`tabbar-btn ${isPinned ? "on" : ""}`} onClick={async () => { const n = !isPinned; setIsPinned(n); await invoke("set_pinned", { pinned: n }); }} title={isPinned ? "Unpin" : "Pin"}>&#x1F4CC;</button>
+      <button className="tabbar-btn" onClick={async () => { try { await invoke("pick_folder"); onRefresh(); } catch {} }} title="Open folder">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+      <button className={`tabbar-btn pin-btn ${isPinned ? "on" : ""}`} onClick={async () => { const n = !isPinned; setIsPinned(n); await invoke("set_pinned", { pinned: n }); }} title={isPinned ? "Unpin" : "Pin"}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill={isPinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1.5a2.5 2.5 0 1 0 0-5h-9a2.5 2.5 0 0 0 0 5H9v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+        </svg>
+      </button>
       <div className="tabbar-menu-wrap" ref={menuRef}>
-        <button className="tabbar-btn" onClick={() => setShowMenu(!showMenu)} title="Menu">&#x22EE;</button>
+        <button className="tabbar-btn" onClick={() => setShowMenu(!showMenu)} title="Menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+          </svg>
+        </button>
         {showMenu && (
           <SettingsMenu
             onClose={() => setShowMenu(false)}
