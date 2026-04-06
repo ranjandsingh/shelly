@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 use std::time::Instant;
+use crate::util::safe_lock;
 
 static LAST_SOUND: Mutex<Option<Instant>> = Mutex::new(None);
 
@@ -8,7 +9,7 @@ static LAST_SOUND: Mutex<Option<Instant>> = Mutex::new(None);
 pub fn play_task_completed() {
     // Throttle: skip if played less than 1s ago
     {
-        let mut last = LAST_SOUND.lock().unwrap();
+        let mut last = safe_lock(&LAST_SOUND);
         if let Some(t) = *last {
             if t.elapsed() < std::time::Duration::from_secs(1) {
                 return;
@@ -37,7 +38,7 @@ pub fn play_task_completed() {
 /// Play a notification sound for waiting-for-input (background sessions only).
 pub fn play_waiting_for_input() {
     {
-        let mut last = LAST_SOUND.lock().unwrap();
+        let mut last = safe_lock(&LAST_SOUND);
         if let Some(t) = *last {
             if t.elapsed() < std::time::Duration::from_secs(1) {
                 return;

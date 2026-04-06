@@ -263,17 +263,8 @@
         indicatorsEl.appendChild(el);
       }
 
-      // If all idle, show small dots per session
-      if (!hasNonIdle) {
-        sessions.forEach(() => {
-          const el = document.createElement('div');
-          el.className = 'indicator';
-          el.innerHTML = '<div class="idle-dot"></div>';
-          indicatorsEl.appendChild(el);
-        });
-      }
-
-      // Show/hide icon and resize pill based on whether there are non-idle statuses
+      // When all idle, show nothing — no dots
+      // Show icon only when there are non-idle statuses
       if (hasNonIdle) {
         pillIcon.classList.add('visible');
         pillEl.classList.add('has-icon');

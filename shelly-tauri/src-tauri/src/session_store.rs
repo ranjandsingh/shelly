@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use uuid::Uuid;
+use crate::util::safe_lock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TerminalStatus {
@@ -38,11 +39,11 @@ impl SessionStore {
     }
 
     pub fn get_sessions(&self) -> Vec<TerminalSession> {
-        self.sessions.lock().unwrap().clone()
+        safe_lock(&self.sessions).clone()
     }
 
     pub fn get_active_session_id(&self) -> Option<String> {
-        self.active_session_id.lock().unwrap().clone()
+        safe_lock(&self.active_session_id).clone()
     }
 
     pub fn add_session(
@@ -69,10 +70,10 @@ impl SessionStore {
             skip_auto_launch: false,
         };
 
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         sessions.push(session.clone());
 
-        let mut active = self.active_session_id.lock().unwrap();
+        let mut active = safe_lock(&self.active_session_id);
         if active.is_none() {
             *active = Some(session.id.clone());
             drop(active);
@@ -84,15 +85,15 @@ impl SessionStore {
     }
 
     pub fn select_session(&self, session_id: &str) {
-        *self.active_session_id.lock().unwrap() = Some(session_id.to_string());
+        *safe_lock(&self.active_session_id) = Some(session_id.to_string());
         self.update_is_active(session_id);
     }
 
     pub fn remove_session(&self, session_id: &str) -> Option<String> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         sessions.retain(|s| s.id != session_id);
 
-        let mut active = self.active_session_id.lock().unwrap();
+        let mut active = safe_lock(&self.active_session_id);
         if active.as_deref() == Some(session_id) {
             *active = sessions.first().map(|s| s.id.clone());
             let new_active = active.clone();
@@ -107,33 +108,33 @@ impl SessionStore {
     }
 
     pub fn rename_session(&self, session_id: &str, name: &str) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
             s.project_name = name.to_string();
         }
     }
 
     pub fn set_session_started(&self, session_id: &str) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
             s.has_started = true;
         }
     }
 
     pub fn update_status(&self, session_id: &str, status: TerminalStatus) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
             s.status = status;
         }
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<TerminalSession> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = safe_lock(&self.sessions);
         sessions.iter().find(|s| s.id == session_id).cloned()
     }
 
     pub fn ensure_default_session(&self) {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = safe_lock(&self.sessions);
         if sessions.is_empty() {
             drop(sessions);
             self.add_session(None, None, None);
@@ -146,7 +147,7 @@ impl SessionStore {
         if saved.is_empty() {
             return;
         }
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         sessions.clear();
         let mut active_id = None;
         for mut s in saved {
@@ -163,22 +164,22 @@ impl SessionStore {
         }
         drop(sessions);
         if let Some(id) = active_id {
-            *self.active_session_id.lock().unwrap() = Some(id.clone());
+            *safe_lock(&self.active_session_id) = Some(id.clone());
             self.update_is_active(&id);
         } else {
             // Fallback: select first
-            let sessions = self.sessions.lock().unwrap();
+            let sessions = safe_lock(&self.sessions);
             if let Some(first) = sessions.first() {
                 let id = first.id.clone();
                 drop(sessions);
-                *self.active_session_id.lock().unwrap() = Some(id.clone());
+                *safe_lock(&self.active_session_id) = Some(id.clone());
                 self.update_is_active(&id);
             }
         }
     }
 
     fn update_is_active(&self, active_id: &str) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = safe_lock(&self.sessions);
         for s in sessions.iter_mut() {
             s.is_active = s.id == active_id;
         }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -16,6 +16,8 @@ export interface TerminalSession {
 export function useSessionStore() {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const pendingStatusRef = useRef<Map<string, string>>(new Map());
+  const debounceTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     const s = await invoke<TerminalSession[]>("get_sessions");
@@ -28,21 +30,35 @@ export function useSessionStore() {
     refresh();
   }, [refresh]);
 
-  // Listen for status changes from Rust
+  // Listen for status changes from Rust (debounced to reduce re-renders)
   useEffect(() => {
     const unlisten = listen<{ sessionId: string; status: string }>(
       "status-changed",
       (event) => {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === event.payload.sessionId
-              ? { ...s, status: event.payload.status }
-              : s
-          )
+        pendingStatusRef.current.set(
+          event.payload.sessionId,
+          event.payload.status
         );
+        if (debounceTimerRef.current !== null) {
+          clearTimeout(debounceTimerRef.current);
+        }
+        debounceTimerRef.current = window.setTimeout(() => {
+          const pending = new Map(pendingStatusRef.current);
+          pendingStatusRef.current.clear();
+          debounceTimerRef.current = null;
+          setSessions((prev) =>
+            prev.map((s) => {
+              const newStatus = pending.get(s.id);
+              return newStatus ? { ...s, status: newStatus } : s;
+            })
+          );
+        }, 200);
       }
     );
     return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
       unlisten.then((f) => f());
     };
   }, []);

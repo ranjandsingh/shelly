@@ -8,6 +8,7 @@ mod sleep_prevention;
 mod sound;
 mod status_parser;
 mod tray;
+mod util;
 
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
@@ -17,6 +18,7 @@ use pty::PtyManager;
 use session_store::{SessionStore, TerminalSession};
 use shell_detect::{ShellInfo, detect_default_shell, get_available_shells};
 use status_parser::StatusParser;
+use util::safe_lock;
 
 struct AppState {
     pty_manager: PtyManager,
@@ -75,7 +77,7 @@ fn create_terminal(
 ) -> Result<(), String> {
     log::info!("CMD create_terminal: session={session_id}, dir={working_dir}, {cols}x{rows}");
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-    let shell = state.default_shell.lock().unwrap().clone();
+    let shell = safe_lock(&state.default_shell).clone();
     log::info!("CMD create_terminal: using shell={shell}");
     state.session_store.set_session_started(&session_id);
     state.pty_manager.create(id, &working_dir, &shell, cols, rows, app)
@@ -99,7 +101,7 @@ fn send_startup_command(
         return Ok(());
     }
 
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = safe_lock(&state.settings).clone();
     let should_launch_claude = settings.auto_launch_claude
         && !session.skip_auto_launch
         && std::path::Path::new(wd).join("CLAUDE.md").exists();
@@ -211,7 +213,7 @@ fn get_session(session_id: String, state: State<'_, AppState>) -> Option<Termina
 
 /// Persist sessions to disk if rememberSessions is enabled
 fn maybe_save_sessions(state: &AppState) {
-    let settings = state.settings.lock().unwrap();
+    let settings = safe_lock(&state.settings);
     if settings.remember_sessions {
         let sessions = state.session_store.get_sessions();
         settings::save_sessions(&sessions);
@@ -225,7 +227,7 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
     use tauri_plugin_dialog::DialogExt;
 
     // Suppress blur-hide while dialog is open
-    *state.dialog_open.lock().unwrap() = true;
+    *safe_lock(&state.dialog_open) = true;
 
     // Temporarily disable alwaysOnTop so the dialog appears above the panel
     if let Some(main_win) = app.get_webview_window("main") {
@@ -241,7 +243,7 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
         let _ = main_win.set_always_on_top(true);
     }
 
-    *state.dialog_open.lock().unwrap() = false;
+    *safe_lock(&state.dialog_open) = false;
 
     if let Some(path) = folder {
         let path_str = path.to_string();
@@ -305,24 +307,27 @@ fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
 
 #[tauri::command]
 fn parse_visible_text(session_id: String, text: String, state: State<'_, AppState>, app: AppHandle) {
-    state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
-    // Check for pending sound notifications (1.5s confirmation)
-    state.status_parser.check_pending_sounds(&state.session_store);
+    // Wrap in catch_unwind so a panic in status parsing can never kill the process
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
+        // Check for pending sound notifications (1.5s confirmation)
+        state.status_parser.check_pending_sounds(&state.session_store);
+    }));
 }
 
 // --- Settings commands ---
 
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> settings::AppSettings {
-    state.settings.lock().unwrap().clone()
+    safe_lock(&state.settings).clone()
 }
 
 #[tauri::command]
 fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppState>) {
-    let old_remember = state.settings.lock().unwrap().remember_sessions;
+    let old_remember = safe_lock(&state.settings).remember_sessions;
     settings::save_settings(&new_settings);
     // Apply default shell change
-    *state.default_shell.lock().unwrap() = new_settings.default_shell.clone();
+    *safe_lock(&state.default_shell) = new_settings.default_shell.clone();
     // If rememberSessions was toggled off, delete saved sessions
     if old_remember && !new_settings.remember_sessions {
         settings::save_sessions(&[]);
@@ -332,7 +337,7 @@ fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppSt
         let sessions = state.session_store.get_sessions();
         settings::save_sessions(&sessions);
     }
-    *state.settings.lock().unwrap() = new_settings;
+    *safe_lock(&state.settings) = new_settings;
 }
 
 // --- Auto-start commands ---
@@ -372,12 +377,16 @@ fn hide_panel(app: AppHandle) {
 #[tauri::command]
 fn set_pinned(pinned: bool, state: State<'_, AppState>) {
     log::info!("CMD set_pinned: {pinned}");
-    *state.is_pinned.lock().unwrap() = pinned;
+    *safe_lock(&state.is_pinned) = pinned;
+    // Set cooldown so any in-flight blur thread won't hide the panel
+    if pinned {
+        *safe_lock(&state.hide_cooldown) = Some(std::time::Instant::now());
+    }
 }
 
 #[tauri::command]
 fn get_pinned(state: State<'_, AppState>) -> bool {
-    *state.is_pinned.lock().unwrap()
+    *safe_lock(&state.is_pinned)
 }
 
 #[tauri::command]
@@ -439,12 +448,12 @@ fn get_available_shells_cmd() -> Vec<ShellInfo> {
 
 #[tauri::command]
 fn get_default_shell(state: State<'_, AppState>) -> String {
-    state.default_shell.lock().unwrap().clone()
+    safe_lock(&state.default_shell).clone()
 }
 
 #[tauri::command]
 fn set_default_shell(path: String, state: State<'_, AppState>) {
-    *state.default_shell.lock().unwrap() = path;
+    *safe_lock(&state.default_shell) = path;
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -524,17 +533,17 @@ pub fn run() {
                     match event {
                         tauri::WindowEvent::Focused(false) => {
                             if let Some(state) = handle_blur.try_state::<AppState>() {
-                                let pinned = *state.is_pinned.lock().unwrap();
+                                let pinned = *safe_lock(&state.is_pinned);
                                 if pinned {
                                     return;
                                 }
                                 // Check if dialog is open
-                                if *state.dialog_open.lock().unwrap() {
+                                if *safe_lock(&state.dialog_open) {
                                     log::info!("MAIN: blur suppressed (dialog open)");
                                     return;
                                 }
                                 // Check cooldown (resize/interaction in progress)
-                                if let Some(cooldown) = *state.hide_cooldown.lock().unwrap() {
+                                if let Some(cooldown) = *safe_lock(&state.hide_cooldown) {
                                     if cooldown.elapsed() < std::time::Duration::from_millis(500) {
                                         log::info!("MAIN: blur suppressed (cooldown active)");
                                         return;
@@ -551,7 +560,7 @@ pub fn run() {
                                         return;
                                     }
                                     if let Some(state) = h.try_state::<AppState>() {
-                                        if *state.is_pinned.lock().unwrap() {
+                                        if *safe_lock(&state.is_pinned) {
                                             return;
                                         }
                                     }
@@ -563,13 +572,13 @@ pub fn run() {
                         tauri::WindowEvent::Resized(_) => {
                             // Set cooldown to prevent blur-hide during resize
                             if let Some(state) = handle_blur.try_state::<AppState>() {
-                                *state.hide_cooldown.lock().unwrap() = Some(std::time::Instant::now());
+                                *safe_lock(&state.hide_cooldown) = Some(std::time::Instant::now());
                             }
                         }
                         tauri::WindowEvent::Moved(_) => {
                             // Set cooldown during drag
                             if let Some(state) = handle_blur.try_state::<AppState>() {
-                                *state.hide_cooldown.lock().unwrap() = Some(std::time::Instant::now());
+                                *safe_lock(&state.hide_cooldown) = Some(std::time::Instant::now());
                             }
                         }
                         _ => {}

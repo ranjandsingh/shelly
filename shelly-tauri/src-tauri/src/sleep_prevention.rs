@@ -1,4 +1,5 @@
 use std::sync::Mutex;
+use crate::util::safe_lock;
 
 pub struct SleepPrevention {
     #[cfg(target_os = "macos")]
@@ -16,7 +17,7 @@ impl SleepPrevention {
     }
 
     pub fn prevent_sleep(&self) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = safe_lock(&self.active);
         if *active {
             return;
         }
@@ -33,7 +34,7 @@ impl SleepPrevention {
 
         #[cfg(target_os = "macos")]
         {
-            let mut child = self.caffeinate.lock().unwrap();
+            let mut child = safe_lock(&self.caffeinate);
             if child.is_none() {
                 *child = std::process::Command::new("caffeinate")
                     .arg("-i")
@@ -44,7 +45,7 @@ impl SleepPrevention {
     }
 
     pub fn allow_sleep(&self) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = safe_lock(&self.active);
         if !*active {
             return;
         }
@@ -61,7 +62,7 @@ impl SleepPrevention {
 
         #[cfg(target_os = "macos")]
         {
-            let mut child = self.caffeinate.lock().unwrap();
+            let mut child = safe_lock(&self.caffeinate);
             if let Some(mut c) = child.take() {
                 let _ = c.kill();
             }

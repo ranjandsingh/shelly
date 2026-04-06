@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use crate::session_store::{SessionStore, TerminalStatus};
 use crate::sound;
+use crate::util::safe_lock;
 use tauri::{AppHandle, Emitter};
 
 pub struct StatusParser {
@@ -122,11 +123,14 @@ impl StatusParser {
         // Selector menu
         for line in bottom8.iter() {
             let trimmed = line.trim_start();
-            if (trimmed.starts_with('❯') || trimmed.starts_with('?'))
-                && trimmed.len() > 1
-                && trimmed[1..].trim_start().chars().any(|c| c.is_ascii_digit())
-            {
-                return TerminalStatus::WaitingForInput;
+            if trimmed.starts_with('❯') || trimmed.starts_with('?') {
+                // Skip past the first character using char_indices to get a valid byte boundary
+                // ('❯' is 3 bytes in UTF-8, so trimmed[1..] would panic)
+                if let Some((idx, _)) = trimmed.char_indices().nth(1) {
+                    if trimmed[idx..].trim_start().chars().any(|c| c.is_ascii_digit()) {
+                        return TerminalStatus::WaitingForInput;
+                    }
+                }
             }
         }
 
@@ -139,7 +143,7 @@ impl StatusParser {
             .collect::<Vec<_>>()
             .join("\n");
         if self.completion_pattern.is_match(&bottom5_text) {
-            return TerminalStatus::Idle;
+            return TerminalStatus::TaskCompleted;
         }
 
         TerminalStatus::Idle
@@ -169,7 +173,7 @@ impl StatusParser {
 
         // Sticky Working (2s)
         if *old_status == TerminalStatus::Working && new_status == TerminalStatus::Idle {
-            let times = self.last_working_time.lock().unwrap();
+            let times = safe_lock(&self.last_working_time);
             if let Some(last) = times.get(session_id) {
                 if last.elapsed() < Duration::from_secs(2) {
                     return;
@@ -188,9 +192,7 @@ impl StatusParser {
         app: &AppHandle,
     ) {
         if status == TerminalStatus::Working {
-            self.last_working_time
-                .lock()
-                .unwrap()
+            safe_lock(&self.last_working_time)
                 .insert(session_id.to_string(), Instant::now());
         }
 
@@ -200,7 +202,7 @@ impl StatusParser {
                 // Only for non-active sessions
                 if let Some(session) = store.get_session(session_id) {
                     if !session.is_active {
-                        self.pending_sounds.lock().unwrap().insert(
+                        safe_lock(&self.pending_sounds).insert(
                             session_id.to_string(),
                             (status.clone(), Instant::now()),
                         );
@@ -209,7 +211,7 @@ impl StatusParser {
             }
             _ => {
                 // Cancel pending sound if status changed away
-                self.pending_sounds.lock().unwrap().remove(session_id);
+                safe_lock(&self.pending_sounds).remove(session_id);
             }
         }
 
@@ -231,7 +233,7 @@ impl StatusParser {
 
     /// Check and fire pending sounds (call this periodically, e.g. from status polling)
     pub fn check_pending_sounds(&self, store: &SessionStore) {
-        let mut pending = self.pending_sounds.lock().unwrap();
+        let mut pending = safe_lock(&self.pending_sounds);
         let mut to_remove = Vec::new();
 
         for (session_id, (status, when)) in pending.iter() {

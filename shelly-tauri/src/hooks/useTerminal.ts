@@ -115,6 +115,13 @@ export function useTerminal(
     });
     observer.observe(containerRef.current);
 
+    // Block xterm's native paste handler — we handle paste via the custom key handler below.
+    // Without this, both the native paste event and our Ctrl+V handler write to the PTY.
+    term.textarea?.addEventListener("paste", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, { capture: true });
+
     // Clipboard handling
     term.attachCustomKeyEventHandler((e) => {
       const mod = e.ctrlKey || e.metaKey;

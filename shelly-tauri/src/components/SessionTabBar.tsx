@@ -51,6 +51,18 @@ export function SessionTabBar({
 }: SessionTabBarProps) {
   const [isPinned, setIsPinned] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+
+  // Sync pinned state from Rust on mount and when panel becomes visible
+  useEffect(() => {
+    invoke<boolean>("get_pinned").then(setIsPinned);
+    let unlisten: (() => void) | null = null;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      listen<boolean>("panel-visibility", (e) => {
+        if (e.payload) invoke<boolean>("get_pinned").then(setIsPinned);
+      }).then((fn) => { unlisten = fn; });
+    });
+    return () => { unlisten?.(); };
+  }, []);
   const [showHints, setShowHints] = useState(true);
   const [hint, setHint] = useState(() => HINTS[Math.floor(Math.random() * HINTS.length)]);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
