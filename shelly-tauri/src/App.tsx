@@ -14,6 +14,7 @@ function App() {
     addSession,
     selectSession,
     removeSession,
+    renameSession,
     refresh,
   } = useSessionStore();
 
@@ -93,6 +94,7 @@ function App() {
         onSelect={selectSession}
         onAdd={() => addSession()}
         onClose={removeSession}
+        onRename={renameSession}
         onRefresh={refresh}
         currentTheme={currentTheme}
         currentFontSize={fontSize}

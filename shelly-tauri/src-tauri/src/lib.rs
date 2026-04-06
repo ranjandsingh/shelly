@@ -81,6 +81,38 @@ fn create_terminal(
     state.pty_manager.create(id, &working_dir, &shell, cols, rows, app)
 }
 
+/// Send optional startup command after shell prompt appears.
+/// The PTY already starts in the correct working directory (via cmd.cwd),
+/// so we only send `claude` if auto-launch is enabled and CLAUDE.md exists.
+#[tauri::command]
+fn send_startup_command(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let session = state.session_store.get_session(&session_id)
+        .ok_or("Session not found")?;
+
+    let wd = &session.working_directory;
+    if wd.is_empty() {
+        return Ok(());
+    }
+
+    let settings = state.settings.lock().unwrap().clone();
+    let should_launch_claude = settings.auto_launch_claude
+        && !session.skip_auto_launch
+        && std::path::Path::new(wd).join("CLAUDE.md").exists();
+
+    if should_launch_claude {
+        log::info!("CMD send_startup_command: session={session_id}, launching claude");
+        state.pty_manager.write_input(id, b"claude\r\n")
+    } else {
+        log::info!("CMD send_startup_command: session={session_id}, no auto-launch needed");
+        Ok(())
+    }
+}
+
 #[tauri::command]
 fn write_input(session_id: String, data: String, state: State<'_, AppState>) -> Result<(), String> {
     log::debug!("CMD write_input: session={session_id}, len={}", data.len());
@@ -144,6 +176,7 @@ fn add_session(
     log::info!("CMD add_session: name={:?}, path={:?}, dir={:?}", name, project_path, working_dir);
     let session = state.session_store.add_session(name, project_path, working_dir);
     log::info!("CMD add_session: created id={}", session.id);
+    maybe_save_sessions(&state);
     session
 }
 
@@ -151,6 +184,7 @@ fn add_session(
 fn select_session(session_id: String, state: State<'_, AppState>) {
     log::info!("CMD select_session: {session_id}");
     state.session_store.select_session(&session_id);
+    maybe_save_sessions(&state);
 }
 
 #[tauri::command]
@@ -159,17 +193,29 @@ fn remove_session(session_id: String, state: State<'_, AppState>) -> Option<Stri
     if let Ok(id) = Uuid::parse_str(&session_id) {
         state.pty_manager.destroy(id);
     }
-    state.session_store.remove_session(&session_id)
+    let result = state.session_store.remove_session(&session_id);
+    maybe_save_sessions(&state);
+    result
 }
 
 #[tauri::command]
 fn rename_session(session_id: String, name: String, state: State<'_, AppState>) {
     state.session_store.rename_session(&session_id, &name);
+    maybe_save_sessions(&state);
 }
 
 #[tauri::command]
 fn get_session(session_id: String, state: State<'_, AppState>) -> Option<TerminalSession> {
     state.session_store.get_session(&session_id)
+}
+
+/// Persist sessions to disk if rememberSessions is enabled
+fn maybe_save_sessions(state: &AppState) {
+    let settings = state.settings.lock().unwrap();
+    if settings.remember_sessions {
+        let sessions = state.session_store.get_sessions();
+        settings::save_sessions(&sessions);
+    }
 }
 
 // --- File/folder commands ---
@@ -260,6 +306,8 @@ fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
 #[tauri::command]
 fn parse_visible_text(session_id: String, text: String, state: State<'_, AppState>, app: AppHandle) {
     state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
+    // Check for pending sound notifications (1.5s confirmation)
+    state.status_parser.check_pending_sounds(&state.session_store);
 }
 
 // --- Settings commands ---
@@ -271,9 +319,19 @@ fn get_settings(state: State<'_, AppState>) -> settings::AppSettings {
 
 #[tauri::command]
 fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppState>) {
+    let old_remember = state.settings.lock().unwrap().remember_sessions;
     settings::save_settings(&new_settings);
     // Apply default shell change
     *state.default_shell.lock().unwrap() = new_settings.default_shell.clone();
+    // If rememberSessions was toggled off, delete saved sessions
+    if old_remember && !new_settings.remember_sessions {
+        settings::save_sessions(&[]);
+    }
+    // If toggled on, save current sessions immediately
+    if !old_remember && new_settings.remember_sessions {
+        let sessions = state.session_store.get_sessions();
+        settings::save_sessions(&sessions);
+    }
     *state.settings.lock().unwrap() = new_settings;
 }
 
@@ -332,11 +390,13 @@ fn quit_shelly(app: AppHandle) {
 fn shrink_notch(app: AppHandle) {
     log::info!("CMD shrink_notch");
     if let Some(notch) = app.get_webview_window("notch") {
-        // Tiny pill: 44x10 with slight y offset (padding effect)
-        let _ = notch.set_size(tauri::LogicalSize::new(44.0, 10.0));
+        // Collapsed pill: 84x38
+        let w = 84.0;
+        let h = 38.0;
+        let _ = notch.set_size(tauri::LogicalSize::new(w, h));
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
-            let x = ((sw - 44.0) / 2.0) as i32;
+            let x = ((sw - w) / 2.0) as i32;
             let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
         }
     }
@@ -346,11 +406,13 @@ fn shrink_notch(app: AppHandle) {
 fn expand_notch(app: AppHandle) {
     log::info!("CMD expand_notch");
     if let Some(notch) = app.get_webview_window("notch") {
-        // Hover state: slightly bigger
-        let _ = notch.set_size(tauri::LogicalSize::new(60.0, 14.0));
+        // Hover state: slightly wider for hover feedback
+        let w = 100.0;
+        let h = 38.0;
+        let _ = notch.set_size(tauri::LogicalSize::new(w, h));
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
-            let x = ((sw - 60.0) / 2.0) as i32;
+            let x = ((sw - w) / 2.0) as i32;
             let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
         }
     }
@@ -394,6 +456,15 @@ pub fn run() {
     log::info!("Default shell: {default_shell}");
 
     let session_store = SessionStore::new();
+
+    // Restore saved sessions if rememberSessions is enabled
+    if app_settings.remember_sessions {
+        let saved = settings::load_sessions();
+        if !saved.is_empty() {
+            log::info!("Restoring {} saved sessions", saved.len());
+            session_store.restore_sessions(saved);
+        }
+    }
     session_store.ensure_default_session();
 
     tauri::Builder::default()
@@ -430,14 +501,14 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             log::info!("SETUP: tray initialized");
 
-            // Position notch window at top-center of screen
+            // Position notch window at top-center of screen (greeting size: 140x46)
             if let Some(notch) = app.get_webview_window("notch") {
                 log::info!("SETUP: positioning notch window...");
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Some(monitor) = handle.primary_monitor().ok().flatten() {
                         let screen_width = monitor.size().width as f64 / monitor.scale_factor();
-                        let x = ((screen_width - 110.0) / 2.0) as i32;
+                        let x = ((screen_width - 140.0) / 2.0) as i32;
                         let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
                         log::info!("SETUP: notch positioned at x={x}");
                     }
@@ -543,6 +614,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             create_terminal,
+            send_startup_command,
             write_input,
             resize_terminal,
             get_buffered_output,

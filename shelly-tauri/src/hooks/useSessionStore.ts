@@ -47,6 +47,21 @@ export function useSessionStore() {
     };
   }, []);
 
+  // Listen for process-exited events
+  useEffect(() => {
+    const unlisten = listen<string>("process-exited", (event) => {
+      const exitedId = event.payload;
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === exitedId ? { ...s, status: "Exited", hasStarted: false } : s
+        )
+      );
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
   const addSession = useCallback(
     async (name?: string, projectPath?: string, workingDir?: string) => {
       const session = await invoke<TerminalSession>("add_session", {

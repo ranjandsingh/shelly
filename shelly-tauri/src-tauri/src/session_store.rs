@@ -140,6 +140,43 @@ impl SessionStore {
         }
     }
 
+    /// Load saved sessions from disk, marking all as not-started (terminals need recreation).
+    /// Only the previously active session will auto-launch claude; others get skip_auto_launch=true.
+    pub fn restore_sessions(&self, saved: Vec<TerminalSession>) {
+        if saved.is_empty() {
+            return;
+        }
+        let mut sessions = self.sessions.lock().unwrap();
+        sessions.clear();
+        let mut active_id = None;
+        for mut s in saved {
+            s.has_started = false;
+            s.status = TerminalStatus::Idle;
+            // Only the previously active session should auto-launch claude
+            if s.is_active {
+                active_id = Some(s.id.clone());
+                s.skip_auto_launch = false;
+            } else {
+                s.skip_auto_launch = true;
+            }
+            sessions.push(s);
+        }
+        drop(sessions);
+        if let Some(id) = active_id {
+            *self.active_session_id.lock().unwrap() = Some(id.clone());
+            self.update_is_active(&id);
+        } else {
+            // Fallback: select first
+            let sessions = self.sessions.lock().unwrap();
+            if let Some(first) = sessions.first() {
+                let id = first.id.clone();
+                drop(sessions);
+                *self.active_session_id.lock().unwrap() = Some(id.clone());
+                self.update_is_active(&id);
+            }
+        }
+    }
+
     fn update_is_active(&self, active_id: &str) {
         let mut sessions = self.sessions.lock().unwrap();
         for s in sessions.iter_mut() {

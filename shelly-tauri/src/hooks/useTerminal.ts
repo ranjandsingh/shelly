@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   createTerminal as createPty,
   writeInput,
@@ -23,9 +24,12 @@ export function useTerminal(
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const unlistenRef = useRef<(() => void) | null>(null);
+  const unlistenExitRef = useRef<(() => void) | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const currentSessionRef = useRef<string | null>(null);
+  const sessionExitedRef = useRef<boolean>(false);
+  const lastWorkDirRef = useRef<string>("");
 
   // Initialize xterm once
   useEffect(() => {
@@ -54,7 +58,47 @@ export function useTerminal(
 
     // Handle input
     term.onData((data) => {
-      if (currentSessionRef.current) {
+      if (!currentSessionRef.current) return;
+
+      // If process exited and user presses Enter, restart the terminal
+      if (sessionExitedRef.current && (data === "\r" || data === "\n")) {
+        sessionExitedRef.current = false;
+        const sid = currentSessionRef.current;
+        const workDir = lastWorkDirRef.current || "";
+        term.reset();
+        fitAddon.fit();
+        (async () => {
+          try {
+            // Re-subscribe to output first
+            if (unlistenRef.current) {
+              unlistenRef.current();
+              unlistenRef.current = null;
+            }
+            unlistenRef.current = (await onTerminalOutput(
+              (event: TerminalOutputEvent) => {
+                if (event.sessionId === sid) {
+                  const bytes = Uint8Array.from(atob(event.data), (c) => c.charCodeAt(0));
+                  term.write(bytes);
+                }
+              }
+            )) as unknown as () => void;
+
+            await createPty(sid, workDir, term.cols, term.rows);
+            if (workDir) {
+              setTimeout(async () => {
+                try {
+                  await invoke("send_startup_command", { sessionId: sid });
+                } catch {}
+              }, 1500);
+            }
+          } catch (e) {
+            term.write(`\r\n\x1b[31mFailed to restart: ${e}\x1b[0m\r\n`);
+          }
+        })();
+        return;
+      }
+
+      if (!sessionExitedRef.current) {
         writeInput(currentSessionRef.current, data);
       }
     });
@@ -120,13 +164,19 @@ export function useTerminal(
         return;
       }
 
-      // Cleanup previous listener
+      // Cleanup previous listeners
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
       }
+      if (unlistenExitRef.current) {
+        unlistenExitRef.current();
+        unlistenExitRef.current = null;
+      }
 
       currentSessionRef.current = newSessionId;
+      sessionExitedRef.current = false;
+      lastWorkDirRef.current = workDir;
 
       const exists = await checkHasTerminal(newSessionId);
       console.log(`[useTerminal] hasTerminal=${exists}`);
@@ -173,9 +223,31 @@ export function useTerminal(
           }
         )) as unknown as () => void;
 
-        // Create PTY at current xterm size
+        // Create PTY at current xterm size (shell starts in workDir via cmd.cwd)
         await createPty(newSessionId, workDir, term.cols, term.rows);
+
+        // After shell prompt appears, optionally auto-launch claude
+        setTimeout(async () => {
+          try {
+            await invoke("send_startup_command", { sessionId: newSessionId });
+          } catch (e) {
+            console.warn("[useTerminal] send_startup_command failed:", e);
+          }
+        }, 1500);
       }
+
+      // Listen for process exit
+      unlistenExitRef.current = (await listen<string>(
+        "process-exited",
+        (event) => {
+          if (event.payload === newSessionId && termRef.current) {
+            sessionExitedRef.current = true;
+            termRef.current.write(
+              "\r\n\x1b[90m[Process exited. Press Enter to restart]\x1b[0m\r\n"
+            );
+          }
+        }
+      )) as unknown as () => void;
 
       term.focus();
 
@@ -210,6 +282,10 @@ export function useTerminal(
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
+      }
+      if (unlistenExitRef.current) {
+        unlistenExitRef.current();
+        unlistenExitRef.current = null;
       }
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);

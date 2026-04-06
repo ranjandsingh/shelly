@@ -291,6 +291,34 @@ html, body, #root {
   margin: 4px 0;
 }
 
+/* Inline rename input */
+.tabbar-tab-rename {
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #e6e6e6;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 1px 4px;
+  width: 80px;
+  outline: none;
+}
+.tabbar-tab-rename:focus {
+  border-color: #4caf50;
+}
+
+/* Right-click context menu on tabs */
+.tab-context-menu {
+  position: fixed;
+  background: var(--menu-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 120px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  z-index: 2000;
+}
+
 /* ===== Separator ===== */
 .tab-separator {
   height: 1px;

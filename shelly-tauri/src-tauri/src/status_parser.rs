@@ -3,11 +3,14 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use crate::session_store::{SessionStore, TerminalStatus};
+use crate::sound;
 use tauri::{AppHandle, Emitter};
 
 pub struct StatusParser {
     completion_pattern: Regex,
     last_working_time: Mutex<HashMap<String, Instant>>,
+    /// Pending sound confirmations: session_id -> (status, when_set)
+    pending_sounds: Mutex<HashMap<String, (TerminalStatus, Instant)>>,
 }
 
 impl StatusParser {
@@ -15,6 +18,7 @@ impl StatusParser {
         Self {
             completion_pattern: Regex::new(r"[✢✳✶✻✽].*\bfor\b.*\d+[ms]").unwrap(),
             last_working_time: Mutex::new(HashMap::new()),
+            pending_sounds: Mutex::new(HashMap::new()),
         }
     }
 
@@ -190,7 +194,28 @@ impl StatusParser {
                 .insert(session_id.to_string(), Instant::now());
         }
 
+        // Schedule sound for background sessions (1.5s confirmation delay)
+        match status {
+            TerminalStatus::TaskCompleted | TerminalStatus::WaitingForInput => {
+                // Only for non-active sessions
+                if let Some(session) = store.get_session(session_id) {
+                    if !session.is_active {
+                        self.pending_sounds.lock().unwrap().insert(
+                            session_id.to_string(),
+                            (status.clone(), Instant::now()),
+                        );
+                    }
+                }
+            }
+            _ => {
+                // Cancel pending sound if status changed away
+                self.pending_sounds.lock().unwrap().remove(session_id);
+            }
+        }
+
         store.update_status(session_id, status.clone());
+
+        // Emit status-changed for React
         let _ = app.emit(
             "status-changed",
             serde_json::json!({
@@ -198,5 +223,35 @@ impl StatusParser {
                 "status": status,
             }),
         );
+
+        // Emit sessions-updated for notch
+        let sessions = store.get_sessions();
+        let _ = app.emit("sessions-updated", &sessions);
+    }
+
+    /// Check and fire pending sounds (call this periodically, e.g. from status polling)
+    pub fn check_pending_sounds(&self, store: &SessionStore) {
+        let mut pending = self.pending_sounds.lock().unwrap();
+        let mut to_remove = Vec::new();
+
+        for (session_id, (status, when)) in pending.iter() {
+            if when.elapsed() >= Duration::from_millis(1500) {
+                // Confirm the session is still in this status
+                if let Some(session) = store.get_session(session_id) {
+                    if session.status == *status && !session.is_active {
+                        match status {
+                            TerminalStatus::TaskCompleted => sound::play_task_completed(),
+                            TerminalStatus::WaitingForInput => sound::play_waiting_for_input(),
+                            _ => {}
+                        }
+                    }
+                }
+                to_remove.push(session_id.clone());
+            }
+        }
+
+        for id in to_remove {
+            pending.remove(&id);
+        }
     }
 }
