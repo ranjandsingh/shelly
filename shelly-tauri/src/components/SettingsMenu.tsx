@@ -175,9 +175,6 @@ export function SettingsMenu({
       <div className="menu-item" onClick={handleCollapse}>
         Collapse to bar
       </div>
-      <div className="menu-separator" />
-
-      <div className="menu-section">Appearance</div>
       <div className="menu-item arrow" onClick={() => setSubMenu("theme")}>
         Theme
         <span className="menu-value">{THEMES[currentTheme]?.name}</span>
@@ -186,9 +183,6 @@ export function SettingsMenu({
         Text Size
         <span className="menu-value">{currentFontSize}px</span>
       </div>
-
-      <div className="menu-separator" />
-      <div className="menu-section">Terminal</div>
       <div className="menu-item arrow" onClick={() => setSubMenu("shell")}>
         Default Shell
         <span className="menu-value">
@@ -196,19 +190,14 @@ export function SettingsMenu({
         </span>
       </div>
       {settings && (
-        <div
-          className={`menu-item toggle ${settings.autoLaunchClaude ? "on" : ""}`}
-          onClick={() => toggleSetting("autoLaunchClaude", settings.autoLaunchClaude)}
-        >
-          Auto-launch Claude
-          <span className="toggle-indicator">{settings.autoLaunchClaude ? "ON" : "OFF"}</span>
-        </div>
-      )}
-
-      <div className="menu-separator" />
-      <div className="menu-section">General</div>
-      {settings && (
         <>
+          <div
+            className={`menu-item toggle ${settings.autoLaunchClaude ? "on" : ""}`}
+            onClick={() => toggleSetting("autoLaunchClaude", settings.autoLaunchClaude)}
+          >
+            Auto-launch Claude
+            <span className="toggle-indicator">{settings.autoLaunchClaude ? "ON" : "OFF"}</span>
+          </div>
           <div
             className={`menu-item toggle ${settings.rememberSessions ? "on" : ""}`}
             onClick={() => toggleSetting("rememberSessions", settings.rememberSessions)}
@@ -239,8 +228,6 @@ export function SettingsMenu({
           </div>
         </>
       )}
-
-      <div className="menu-separator" />
       <div className="menu-item danger" onClick={handleQuit}>
         Quit Shelly
       </div>

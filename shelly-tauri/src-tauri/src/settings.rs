@@ -14,7 +14,7 @@ pub struct HotkeyConfig {
 pub struct AppSettings {
     #[serde(default = "default_shell")]
     pub default_shell: String,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub remember_sessions: bool,
     #[serde(default = "default_true")]
     pub auto_check_updates: bool,
@@ -54,7 +54,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             default_shell: default_shell(),
-            remember_sessions: false,
+            remember_sessions: true,
             auto_check_updates: true,
             auto_launch_claude: false,
             auto_start: false,
