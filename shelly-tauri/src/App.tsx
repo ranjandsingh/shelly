@@ -20,6 +20,7 @@ function App() {
 
   const [currentTheme, setCurrentTheme] = useState("vs-dark");
   const [fontSize, setFontSize] = useState(11);
+  const [pillShape, setPillShape] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
@@ -55,6 +56,14 @@ function App() {
     localStorage.setItem("shelly-font-size", String(size));
   }, []);
 
+  // Sync border-radius with window animation
+  useEffect(() => {
+    const unlisten = listen<boolean>("panel-animating", (e) => {
+      setPillShape(e.payload);
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
+
   // Listen for session refresh from Rust
   useEffect(() => {
     const unlisten = listen("sessions-force-refresh", () => { refresh(); });
@@ -86,7 +95,7 @@ function App() {
   }, [sessions, activeSessionId, addSession, selectSession, removeSession]);
 
   return (
-    <div className="floating-panel">
+    <div className={`floating-panel ${pillShape ? "panel-pill" : ""}`}>
       <DragBar />
       <SessionTabBar
         sessions={sessions}

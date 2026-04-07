@@ -20,7 +20,8 @@
         "alwaysOnTop": true,
         "resizable": true,
         "visible": false,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "backgroundColor": "#181818"
       },
       {
         "label": "notch",

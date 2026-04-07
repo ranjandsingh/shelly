@@ -78,48 +78,59 @@ fn do_show_panel(app: &AppHandle) {
             if !*flag { *flag = true; true } else { false }
         } else { false };
 
-        // Animation start state: narrow (like notch), above screen
-        let start_w = (target_w - 200.0).max(200.0);
-        let start_y: f64 = -30.0;
+        // Start from pill-like shape: small, centered at top
+        let start_w = 140.0_f64;
+        let start_h = 38.0_f64;
+        let start_y: f64 = 0.0;
+
+        // Hide notch so it doesn't overlap with panel animation
+        if let Some(notch) = app.get_webview_window("notch") {
+            let _ = notch.hide();
+        }
 
         // Position offscreen BEFORE showing — no flash
         let _ = main_win.set_position(tauri::LogicalPosition::new(center_x(sw, start_w), -400));
-        let _ = main_win.set_size(tauri::LogicalSize::new(start_w, target_h));
+        let _ = main_win.set_size(tauri::LogicalSize::new(start_w, start_h));
+
+        // Tell frontend to use pill-like rounding, and signal visibility immediately
+        let _ = app.emit("panel-animating", true);
+        let _ = app.emit("panel-visibility", true);
 
         let handle = app.clone();
         std::thread::spawn(move || {
             if first_show {
-                // Let WebView2 fully init while window is offscreen
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }
             // Move to animation start position, then show
             if let Some(win) = handle.get_webview_window("main") {
+                let _ = win.set_size(tauri::LogicalSize::new(start_w, start_h));
                 let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, start_w), start_y as i32));
-                let _ = win.set_size(tauri::LogicalSize::new(start_w, target_h));
-                // Small delay to let position apply before show
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 let _ = win.show();
                 let _ = win.set_focus();
             }
 
-            let steps: u64 = 16;
-            let total_ms: u64 = 250;
+            let steps: u64 = 18;
+            let total_ms: u64 = 280;
 
             for i in 1..=steps {
                 let t = i as f64 / steps as f64;
+                // Spring ease-out with overshoot
                 let ease = if t < 0.8 {
                     let t2 = t / 0.8;
                     1.0 - (1.0 - t2).powi(3)
                 } else {
                     let t2 = (t - 0.8) / 0.2;
-                    1.0 + 0.03 * (1.0 - t2) * (std::f64::consts::PI * t2).sin()
+                    1.0 + 0.02 * (1.0 - t2) * (std::f64::consts::PI * t2).sin()
                 };
+                let clamped = ease.min(1.0);
 
-                let y = start_y + (0.0 - start_y) * ease;
-                let w = start_w + (target_w - start_w) * ease.min(1.0);
+                let w = start_w + (target_w - start_w) * clamped;
+                let h = start_h + (target_h - start_h) * clamped;
+                let y = start_y;
 
                 if let Some(win) = handle.get_webview_window("main") {
-                    let _ = win.set_size(tauri::LogicalSize::new(w, target_h));
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
                     let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), y as i32));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
@@ -129,10 +140,10 @@ fn do_show_panel(app: &AppHandle) {
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
                 let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, target_w), 0));
             }
+            let _ = handle.emit("panel-animating", false);
             set_animating(&handle, false);
         });
-        let _ = app.emit("panel-visibility", true);
-        log::info!("do_show_panel: expanding in");
+        log::info!("do_show_panel: growing from pill");
     }
 }
 
@@ -143,37 +154,46 @@ fn do_hide_panel(app: &AppHandle) {
         set_animating(app, true);
 
         let (target_w, target_h) = get_panel_size(app);
+        let _ = app.emit("panel-animating", true);
+
         let handle = app.clone();
         std::thread::spawn(move || {
-            let steps: u64 = 10;
-            let total_ms: u64 = 140;
+            let steps: u64 = 12;
+            let total_ms: u64 = 180;
             let sw = get_screen_width(&handle);
-            let end_w = (target_w - 150.0).max(200.0);
-            let end_y: f64 = -25.0;
+            // Shrink back toward pill shape
+            let end_w = 140.0_f64;
+            let end_h = 38.0_f64;
 
             for i in 1..=steps {
                 let t = i as f64 / steps as f64;
+                // Ease-in quadratic
                 let ease = t * t;
 
-                let y = end_y * ease;
                 let w = target_w + (end_w - target_w) * ease;
+                let h = target_h + (end_h - target_h) * ease;
 
                 if let Some(win) = handle.get_webview_window("main") {
-                    let _ = win.set_size(tauri::LogicalSize::new(w, target_h));
-                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), y as i32));
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), 0));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
             }
-            // Hide, then reset size while hidden (no flash)
+            // Hide panel, then show notch back
             if let Some(win) = handle.get_webview_window("main") {
                 let _ = win.hide();
                 let _ = handle.emit("panel-visibility", false);
+                let _ = handle.emit("panel-animating", false);
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
             }
+            // Restore notch after panel is fully hidden
+            if let Some(notch) = handle.get_webview_window("notch") {
+                let _ = notch.show();
+            }
             set_animating(&handle, false);
         });
-        log::info!("do_hide_panel: shrinking out");
+        log::info!("do_hide_panel: shrinking to pill");
     }
 }
 

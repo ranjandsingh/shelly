@@ -49,6 +49,15 @@ html, body, #root {
   flex-direction: column;
   overflow: hidden;
   border-radius: 0 0 10px 10px;
+  opacity: 1;
+  transition: border-radius 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.2s ease-out;
+}
+.floating-panel.panel-pill {
+  border-radius: 20px;
+  opacity: 0;
+  transition: border-radius 0.15s cubic-bezier(0.4, 0, 1, 1),
+              opacity 0.12s ease-in;
 }
 
 /* ===== Drag Bar ===== */

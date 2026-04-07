@@ -118,6 +118,20 @@ export function useTerminal(
     });
     observer.observe(containerRef.current);
 
+    // Re-fit terminal after panel animation completes
+    let unlistenAnim: (() => void) | null = null;
+    listen<boolean>("panel-animating", (e) => {
+      if (!e.payload) {
+        // Animation ended — re-fit with a small delay for layout to settle
+        setTimeout(() => {
+          fitAddon.fit();
+          if (currentSessionRef.current) {
+            resizeTerminal(currentSessionRef.current, term.cols, term.rows);
+          }
+        }, 50);
+      }
+    }).then((fn) => { unlistenAnim = fn as unknown as () => void; });
+
     // Block xterm's native paste handler — we handle paste via the custom key handler below.
     // Without this, both the native paste event and our Ctrl+V handler write to the PTY.
     term.textarea?.addEventListener("paste", (e) => {
@@ -148,6 +162,7 @@ export function useTerminal(
 
     return () => {
       observer.disconnect();
+      unlistenAnim?.();
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;
