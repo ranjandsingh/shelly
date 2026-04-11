@@ -105,7 +105,19 @@ jobs:
             See the assets below to download and install this version.
 
             > macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+  publish:
+    needs: [create-tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ needs.create-tag.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false
