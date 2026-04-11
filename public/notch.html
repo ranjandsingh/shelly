@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  /* === Shared bar shape === */
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 0 10px;
+    margin-top: 4px;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* === Greeting state === */
+  .bar.greeting {
+    gap: 6px;
+    border-radius: 16px;
+    height: 36px;
+    opacity: 1;
+    transition: opacity 0.4s cubic-bezier(0.33, 0, 0.67, 1);
+  }
+  .bar.greeting.fading {
+    opacity: 0;
+  }
+  .bar.greeting.hidden { display: none; }
+  .greeting-icon { width: 28px; height: 28px; border-radius: 4px; }
+  .greeting-text {
+    color: #e0e0e0;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* === Pill state (collapsed) === */
+  .bar.pill {
+    display: none;
+    gap: 4px;
+    border-radius: 8px;
+    height: 18px;
+    min-width: 48px;
+    padding: 0 8px;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .bar.pill.active { display: flex; }
+  .bar.pill.has-icon {
+    height: 30px;
+    min-width: 84px;
+  }
+  .bar.pill.expanded {
+    background: rgba(0, 0, 0, 0.65);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  /* === Mascot icon in pill === */
+  .pill-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    margin-right: 4px;
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.33, 0, 0.67, 1);
+  }
+  .pill-icon.visible { opacity: 1; }
+
+  /* === Status indicators (14x14) === */
+  .indicators { display: flex; gap: 6px; align-items: center; }
+
+  .indicator {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* Idle dot — small, gray */
+  .idle-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #666;
+  }
+
+  /* Working spinner — 14x14 orange arc */
+  .working-spinner {
+    width: 14px; height: 14px;
+    border: 2px solid transparent;
+    border-top-color: #ffa726;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* WaitingForInput triangle — 14x14 orange, pulses */
+  .waiting-tri {
+    width: 0; height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 12px solid #ffa726;
+    animation: pulse 0.6s ease-in-out infinite alternate;
+  }
+  @keyframes pulse { from { transform: scale(0.7); } to { transform: scale(1.2); } }
+
+  /* TaskCompleted checkmark — green */
+  .completed-chk {
+    color: #4caf50;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+  }
+
+  /* Interrupted dot — 8px red */
+  .interrupted-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #ef5350;
+  }
+
+  /* Count label next to indicator */
+  .count {
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 2px;
+  }
+  .count.working { color: #ffa726; }
+  .count.waiting { color: #ffa726; }
+  .count.completed { color: #4caf50; }
+  .count.interrupted { color: #ef5350; }
+</style>
+</head>
+<body>
+  <!-- Greeting bar: shows on launch -->
+  <div class="bar greeting" id="greeting">
+    <img class="greeting-icon" src="icon.png" alt="">
+    <span class="greeting-text" id="greetingText">Hello!</span>
+  </div>
+
+  <!-- Pill bar: shows after greeting -->
+  <div class="bar pill" id="pill">
+    <img class="pill-icon" id="pillIcon" src="icon.png" alt="">
+    <div class="indicators" id="indicators"></div>
+  </div>
+
+  <script>
+    const GREETINGS = [
+      "Hello!", "Hey!", "Namaste!", "Hola!", "Bonjour!",
+      "Ciao!", "Hallo!", "Olá!", "Ahoj!", "Salut!",
+      "Hej!", "Aloha!", "Salam!", "Sawubona!", "Merhaba!"
+    ];
+
+    const greetingEl = document.getElementById('greeting');
+    const greetingText = document.getElementById('greetingText');
+    const pillEl = document.getElementById('pill');
+    const pillIcon = document.getElementById('pillIcon');
+    const indicatorsEl = document.getElementById('indicators');
+
+    // Random greeting
+    greetingText.textContent = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+
+    // After 3s: fade greeting, switch to pill
+    setTimeout(() => {
+      greetingEl.classList.add('fading');
+      setTimeout(() => {
+        greetingEl.classList.add('hidden');
+        pillEl.classList.add('active');
+        if (window.__TAURI__) window.__TAURI__.core.invoke('shrink_notch');
+      }, 400);
+    }, 3000);
+
+    // Click -> toggle panel
+    document.body.addEventListener('click', () => {
+      if (window.__TAURI__) window.__TAURI__.core.invoke('toggle_panel');
+    });
+
+    // Hover -> expand, show panel (debounced to prevent flicker)
+    let hoverTimer = null;
+    let shrinkTimer = null;
+    let isExpanded = false;
+
+    document.body.addEventListener('mouseenter', () => {
+      // Cancel any pending shrink
+      if (shrinkTimer) { clearTimeout(shrinkTimer); shrinkTimer = null; }
+
+      if (!isExpanded) {
+        isExpanded = true;
+        pillEl.classList.add('expanded');
+        if (window.__TAURI__) window.__TAURI__.core.invoke('expand_notch');
+      }
+      hoverTimer = setTimeout(() => {
+        if (window.__TAURI__) window.__TAURI__.core.invoke('show_panel');
+      }, 300);
+    });
+    document.body.addEventListener('mouseleave', () => {
+      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      // Delay shrink to avoid flicker from resize-triggered mouseleave
+      shrinkTimer = setTimeout(() => {
+        isExpanded = false;
+        pillEl.classList.remove('expanded');
+        if (window.__TAURI__) window.__TAURI__.core.invoke('shrink_notch');
+        shrinkTimer = null;
+      }, 400);
+    });
+
+    // Determine which icon to show based on aggregate status
+    function getStatusIcon(sessions) {
+      const statuses = sessions.map(s => s.status || 'Idle');
+      if (statuses.includes('Working')) return 'icon.png'; // processing icon if you have one
+      if (statuses.includes('WaitingForInput')) return 'icon.png';
+      if (statuses.includes('TaskCompleted')) return 'icon.png';
+      return 'icon.png';
+    }
+
+    // Render status indicators from sessions
+    function renderIndicators(sessions) {
+      indicatorsEl.innerHTML = '';
+      if (!Array.isArray(sessions) || sessions.length === 0) return;
+
+      // Count sessions by status
+      const counts = {};
+      sessions.forEach(s => {
+        const st = s.status || 'Idle';
+        counts[st] = (counts[st] || 0) + 1;
+      });
+
+      let hasNonIdle = false;
+
+      // Working
+      if (counts.Working) {
+        hasNonIdle = true;
+        const el = document.createElement('div');
+        el.className = 'indicator';
+        el.innerHTML = '<div class="working-spinner"></div>';
+        if (counts.Working > 1) el.innerHTML += `<span class="count working">${counts.Working}</span>`;
+        indicatorsEl.appendChild(el);
+      }
+
+      // WaitingForInput
+      if (counts.WaitingForInput) {
+        hasNonIdle = true;
+        const el = document.createElement('div');
+        el.className = 'indicator';
+        el.innerHTML = '<div class="waiting-tri"></div>';
+        if (counts.WaitingForInput > 1) el.innerHTML += `<span class="count waiting">${counts.WaitingForInput}</span>`;
+        indicatorsEl.appendChild(el);
+      }
+
+      // TaskCompleted
+      if (counts.TaskCompleted) {
+        hasNonIdle = true;
+        const el = document.createElement('div');
+        el.className = 'indicator';
+        el.innerHTML = '<span class="completed-chk">&#x2713;</span>';
+        if (counts.TaskCompleted > 1) el.innerHTML += `<span class="count completed">${counts.TaskCompleted}</span>`;
+        indicatorsEl.appendChild(el);
+      }
+
+      // Interrupted
+      if (counts.Interrupted) {
+        hasNonIdle = true;
+        const el = document.createElement('div');
+        el.className = 'indicator';
+        el.innerHTML = '<div class="interrupted-dot"></div>';
+        if (counts.Interrupted > 1) el.innerHTML += `<span class="count interrupted">${counts.Interrupted}</span>`;
+        indicatorsEl.appendChild(el);
+      }
+
+      // When all idle, show nothing — no dots
+      // Show icon only when there are non-idle statuses
+      if (hasNonIdle) {
+        pillIcon.classList.add('visible');
+        pillEl.classList.add('has-icon');
+      } else {
+        pillIcon.classList.remove('visible');
+        pillEl.classList.remove('has-icon');
+      }
+    }
+
+    // Listen for session updates from Rust
+    if (window.__TAURI__) {
+      window.__TAURI__.event.listen('sessions-updated', (event) => {
+        renderIndicators(event.payload);
+      });
+    }
+  </script>
+</body>
+</html>
