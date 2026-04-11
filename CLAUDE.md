@@ -4,15 +4,15 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Build
 
+**Frontend + Tauri (dev mode):**
 ```bash
-dotnet build Shelly.sln
+bun install
+bun run tauri dev
 ```
 
-Or open `Shelly.sln` in Visual Studio / Rider and build (Ctrl+Shift+B).
-
-To run:
+**Production build:**
 ```bash
-dotnet run --project Shelly.csproj
+bun run tauri build
 ```
 
 There are no tests configured yet.
@@ -23,36 +23,45 @@ Do not add `Co-Authored-By` lines to commit messages.
 
 ## Overview
 
-Shelly is a Windows system tray app that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. When the user clicks the tray icon or presses Ctrl+`, a floating panel appears with embedded terminal sessions (via xterm.js in WebView2 backed by ConPTY) that auto-`cd` into detected IDE project directories and launch `claude`.
+Shelly is a cross-platform system tray app built with Tauri v2 that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. When the user clicks the tray icon or presses Ctrl+\`, a floating panel appears with embedded terminal sessions (xterm.js frontend, portable-pty backend) that auto-`cd` into detected IDE project directories and launch `claude`.
 
 ## Architecture
 
-**App lifecycle**: `App.xaml.cs` manages the system tray icon (via Hardcodet.NotifyIcon), the `FloatingPanel`, and the `HotkeyManager`. There is no main window — the app lives in the system tray.
+**Frontend** (React + Vite + TypeScript): `src/` contains the UI layer rendered inside Tauri webview windows. `App.tsx` is the main component. Terminal rendering uses xterm.js via `TerminalView.tsx`.
 
-**Terminal embedding**: `ConPtyTerminal` wraps the Windows ConPTY API (CreatePseudoConsole) to spawn shell processes with a pseudoterminal. `TerminalHostControl` hosts a WebView2 control running xterm.js for rendering. Data flows bidirectionally: ConPTY stdout → C# → PostMessage → xterm.js, and xterm.js input → PostMessage → C# → ConPTY stdin.
+**Backend** (Rust / Tauri v2): `src-tauri/src/` contains the native backend. `lib.rs` is the main entry point registering Tauri commands and plugins.
 
-**Session management**: `SessionStore` (singleton) holds the list of `TerminalSession` objects and the active selection. It coordinates with `IdeDetector` to discover open IDE projects. Sessions use lazy terminal startup.
+- **PTY**: `pty.rs` wraps `portable-pty` to spawn shell processes with a pseudoterminal. Data flows bidirectionally via Tauri IPC commands.
+- **Session management**: `session_store.rs` holds terminal sessions and coordinates with `ide_detector.rs` to discover open IDE projects.
+- **Status detection**: `status_parser.rs` classifies terminal output into states (Working, WaitingForInput, Interrupted, Idle).
+- **Tray**: `tray.rs` manages the system tray icon and menu.
+- **Settings**: `settings.rs` persists user preferences to disk.
+- **Auto-start**: `auto_start.rs` manages OS-level startup registration.
+- **IDE detection**: `ide_detector.rs` parses window titles to detect VS Code and JetBrains IDE projects.
 
-**Terminal status detection**: `StatusParser` reads terminal output and classifies it into `TerminalStatus` states: `.Working` (spinner chars + token counter), `.WaitingForInput` (user prompt), `.Interrupted`, `.Idle`. The `Idle → TaskCompleted` transition uses a 3-second delay.
-
-**Panel**: `FloatingPanel` is a borderless, topmost WPF Window positioned at top-center of the screen. It activates when shown so the embedded `WebView2` terminal can receive keyboard focus.
-
-**IDE detection**: `IdeDetector` uses `EnumWindows` + window title parsing to detect open VS Code and JetBrains IDE projects.
-
-**Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/shelly-snapshots/<project>/<timestamp>`) with a temporary `GIT_INDEX_FILE`.
-
-**Global hotkey**: `HotkeyManager` registers Ctrl+` via Win32 `RegisterHotKey`.
+**IPC**: Frontend communicates with the Rust backend via Tauri's `invoke()` command system defined in `src/lib/ipc.ts`.
 
 ## Dependencies
 
-- **Hardcodet.NotifyIcon.Wpf.NetCore** — system tray icon
-- **Microsoft.Web.WebView2** — embedded Chromium for xterm.js
-- **xterm.js** — terminal emulator (bundled in Resources/)
+### Frontend
+- **React 19** — UI framework
+- **xterm.js** — terminal emulator
+- **framer-motion** — animations
+- **@tauri-apps/api** — Tauri IPC bridge
+- **@tauri-apps/plugin-updater** — auto-update support
+
+### Backend (Rust)
+- **tauri v2** — app framework (tray-icon, image-png)
+- **portable-pty** — cross-platform pseudoterminal
+- **tauri-plugin-global-shortcut** — hotkey registration
+- **tauri-plugin-updater** — auto-update
+- **rodio** — sound playback
 
 ## Key Directories
 
-- `Models/` — data models (TerminalSession, TerminalStatus)
-- `Services/` — business logic (SessionStore, TerminalManager, ConPtyTerminal, IdeDetector, CheckpointManager, StatusParser)
-- `Views/` — WPF views (FloatingPanel, SessionTabBar, TerminalHostControl)
-- `Interop/` — Win32 P/Invoke declarations and helpers
-- `Resources/` — xterm.js files, tray icon, sounds
+- `src/` — React frontend (components, hooks, lib)
+- `src-tauri/` — Rust backend (Tauri commands, PTY, session management)
+- `src-tauri/icons/` — app icons for all platforms
+- `public/` — static assets (notch window HTML, icons)
+- `shelly-legacy/` — archived WPF/.NET codebase (for reference/patching)
+- `.github/workflows/` — CI/CD workflows

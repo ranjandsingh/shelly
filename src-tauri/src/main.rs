@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    shelly_tauri_lib::run()
+    shelly_lib::run()
 }

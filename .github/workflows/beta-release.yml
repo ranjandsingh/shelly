@@ -28,10 +28,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: shelly-tauri/src-tauri -> target
+          workspaces: src-tauri -> target
 
       - name: Install frontend dependencies
-        working-directory: shelly-tauri
         run: bun install --frozen-lockfile
 
       - name: Build Tauri app
@@ -46,7 +45,6 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          projectPath: shelly-tauri
           tagName: v__VERSION__-beta.${{ github.run_number }}
           releaseName: 'Shelly v__VERSION__-beta.${{ github.run_number }}'
           releaseBody: |

@@ -1,4 +1,4 @@
-name: Legacy Create Release (WPF)
+name: Create Release
 
 on:
   workflow_dispatch:
@@ -59,10 +59,8 @@ jobs:
 
           Merging this PR will automatically:
           - Tag \`v${VERSION}\`
-          - Build self-contained x64 binary
-          - Create installer (Inno Setup)
-          - Create portable ZIP
-          - Publish GitHub Release with all artifacts
+          - Build Tauri app for Windows and macOS
+          - Publish GitHub Release with installers and auto-update manifest
 
           **Bump type:** ${{ inputs.bump }}" \
             --label "bump:${{ inputs.bump }}"

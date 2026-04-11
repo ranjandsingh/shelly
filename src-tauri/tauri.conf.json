@@ -54,5 +54,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ranjandsingh/shelly/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

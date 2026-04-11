@@ -1,20 +1,17 @@
-name: Release
+name: Legacy Release (WPF)
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
   DOTNET_VERSION: '8.0.x'
-  PROJECT_PATH: Shelly.csproj
+  PROJECT_PATH: shelly-legacy/Shelly.csproj
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -81,7 +78,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path ./artifacts | Out-Null
-          Copy-Item portable/README.txt ./publish/README.txt
+          Copy-Item shelly-legacy/portable/README.txt ./publish/README.txt
           Compress-Archive -Path ./publish/* -DestinationPath ./artifacts/Shelly-${{ steps.version.outputs.version }}-portable-win-x64.zip
 
       - name: Install Inno Setup
@@ -92,7 +89,7 @@ jobs:
       - name: Build installer
         shell: cmd
         run: |
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.version.outputs.version }} installer\Shelly.iss
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.version.outputs.version }} shelly-legacy\installer\Shelly.iss
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

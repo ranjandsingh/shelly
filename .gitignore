@@ -1,39 +1,38 @@
-## .NET
-bin/
-obj/
-*.user
-*.suo
-*.cache
+## Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+## Logs
 *.log
-*.vs/
-
-## NuGet
-packages/
-*.nupkg
-
-## Build
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
 ## IDE
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.sln.docstates
+*.suo
+*.user
+*.sw?
 
 ## OS
 Thumbs.db
 desktop.ini
 .DS_Store
 
+## Rust / Tauri (src-tauri has its own .gitignore for target/ and gen/schemas)
+
 ## Release artifacts
 artifacts/
 publish/
 
-## WebView2
-Resources/EBWebView/
-sdfasd.claude/settings.local.json
-PLAN.md
-PROGRESS.md
+## Claude Code
 .claude/settings.local.json
+
+## Legacy .NET (kept in shelly-legacy/)
+shelly-legacy/bin/
+shelly-legacy/obj/
