@@ -8,6 +8,7 @@ mod shell_detect;
 mod sleep_prevention;
 mod sound;
 mod status_parser;
+mod themes_store;
 mod tray;
 mod util;
 
@@ -656,6 +657,21 @@ fn set_attention_settings(
     }
 }
 
+#[tauri::command]
+fn get_imported_themes() -> Vec<themes_store::ImportedTheme> {
+    themes_store::load_all()
+}
+
+#[tauri::command]
+fn save_imported_theme(theme: themes_store::ImportedTheme) -> Vec<themes_store::ImportedTheme> {
+    themes_store::insert_or_replace(theme)
+}
+
+#[tauri::command]
+fn delete_imported_theme(id: String) -> Vec<themes_store::ImportedTheme> {
+    themes_store::delete(&id)
+}
+
 // --- Shell commands ---
 
 #[tauri::command]
@@ -921,6 +937,9 @@ pub fn run() {
             mark_session_interacted,
             get_attention_settings,
             set_attention_settings,
+            get_imported_themes,
+            save_imported_theme,
+            delete_imported_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
