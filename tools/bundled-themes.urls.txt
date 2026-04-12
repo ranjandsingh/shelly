@@ -23,10 +23,22 @@ https://raw.githubusercontent.com/wesbos/cobalt2-vscode/master/theme/cobalt2.jso
 https://raw.githubusercontent.com/EliverLara/Andromeda/master/themes/Andromeda-color-theme.json | andromeda
 https://raw.githubusercontent.com/johnpapa/vscode-winteriscoming/master/themes/WinterIsComing-dark-blue-color-theme.json | winter-is-coming-dark
 https://raw.githubusercontent.com/tinkertrain/panda-syntax-vscode/master/dist/Panda.json | panda
+https://raw.githubusercontent.com/whizkydee/vscode-material-palenight-theme/master/themes/palenight.json | palenight
+https://raw.githubusercontent.com/antfu/vscode-theme-vitesse/main/themes/vitesse-dark.json | vitesse-dark
+https://raw.githubusercontent.com/antfu/vscode-theme-vitesse/main/themes/vitesse-dark-soft.json | vitesse-dark-soft
+https://raw.githubusercontent.com/antfu/vscode-theme-vitesse/main/themes/vitesse-black.json | vitesse-black
+https://raw.githubusercontent.com/jolaleye/horizon-theme-vscode/master/themes/horizon.json | horizon
+https://raw.githubusercontent.com/sainnhe/everforest-vscode/master/themes/everforest-dark.json | everforest-dark
+https://raw.githubusercontent.com/sainnhe/gruvbox-material-vscode/master/themes/gruvbox-material-dark.json | gruvbox-material-dark
 
 # Light
 # NO-STATIC-JSON https://raw.githubusercontent.com/primer/github-vscode-theme/main/themes/light.json | github-light
 # NO-STATIC-JSON https://raw.githubusercontent.com/catppuccin/vscode/main/themes/latte.json | catppuccin-latte
 https://raw.githubusercontent.com/ayu-theme/vscode-ayu/master/ayu-light.json | ayu-light
 https://raw.githubusercontent.com/johnpapa/vscode-winteriscoming/master/themes/WinterIsComing-light-color-theme.json | winter-is-coming-light
+https://raw.githubusercontent.com/antfu/vscode-theme-vitesse/main/themes/vitesse-light.json | vitesse-light
+https://raw.githubusercontent.com/antfu/vscode-theme-vitesse/main/themes/vitesse-light-soft.json | vitesse-light-soft
+https://raw.githubusercontent.com/jolaleye/horizon-theme-vscode/master/themes/horizon-bright.json | horizon-bright
+https://raw.githubusercontent.com/sainnhe/everforest-vscode/master/themes/everforest-light.json | everforest-light
+https://raw.githubusercontent.com/sainnhe/gruvbox-material-vscode/master/themes/gruvbox-material-light.json | gruvbox-material-light
 # NOT-FOUND https://raw.githubusercontent.com/ChromeDevTools/vscode-theme-solarized-light/master/themes/Solarized-light-color-theme.json | solarized-light

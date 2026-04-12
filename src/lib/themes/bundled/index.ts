@@ -21,9 +21,21 @@ import { cobalt2 } from "./cobalt2";
 import { andromeda } from "./andromeda";
 import { winterIsComingDark } from "./winter-is-coming-dark";
 import { panda } from "./panda";
+import { palenight } from "./palenight";
+import { vitesseDark } from "./vitesse-dark";
+import { vitesseDarkSoft } from "./vitesse-dark-soft";
+import { vitesseBlack } from "./vitesse-black";
+import { horizon } from "./horizon";
+import { everforestDark } from "./everforest-dark";
+import { gruvboxMaterialDark } from "./gruvbox-material-dark";
 
 import { ayuLight } from "./ayu-light";
 import { winterIsComingLight } from "./winter-is-coming-light";
+import { vitesseLight } from "./vitesse-light";
+import { vitesseLightSoft } from "./vitesse-light-soft";
+import { horizonBright } from "./horizon-bright";
+import { everforestLight } from "./everforest-light";
+import { gruvboxMaterialLight } from "./gruvbox-material-light";
 
 export const BUILTIN_THEMES: Record<string, Theme> = {
   "vs-dark": vsDark,
@@ -43,8 +55,20 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
   "andromeda": andromeda,
   "winter-is-coming-dark": winterIsComingDark,
   "panda": panda,
+  "palenight": palenight,
+  "vitesse-dark": vitesseDark,
+  "vitesse-dark-soft": vitesseDarkSoft,
+  "vitesse-black": vitesseBlack,
+  "horizon": horizon,
+  "everforest-dark": everforestDark,
+  "gruvbox-material-dark": gruvboxMaterialDark,
   "blueberry-banana": blueberryBanana,
   "vs-light": vsLight,
   "ayu-light": ayuLight,
+  "vitesse-light": vitesseLight,
+  "vitesse-light-soft": vitesseLightSoft,
   "winter-is-coming-light": winterIsComingLight,
+  "horizon-bright": horizonBright,
+  "everforest-light": everforestLight,
+  "gruvbox-material-light": gruvboxMaterialLight,
 };
