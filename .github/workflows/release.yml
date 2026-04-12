@@ -4,17 +4,24 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-release current version: move tag to main HEAD and rebuild (draft releases only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   create-tag:
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      should_build: ${{ steps.reconcile.outputs.should_build }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,24 +30,72 @@ jobs:
         id: version
         run: |
           VERSION=$(grep -oP '"version":\s*"\K[^"]+' src-tauri/tauri.conf.json | head -1)
+          SHA=$(git rev-parse HEAD)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
-          echo "Releasing version: $VERSION"
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION at $SHA"
 
-      - name: Create and push tag (if missing)
+      - name: Reconcile tag and draft release
+        id: reconcile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.force }}
+          EVENT: ${{ github.event_name }}
         run: |
+          set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
+          SHA="${{ steps.version.outputs.sha }}"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
-            echo "Tag $TAG already exists on remote — reusing it."
-          else
-            git tag -a "$TAG" -m "Release $TAG"
+
+          REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}' || true)
+
+          if [ -z "$REMOTE_SHA" ]; then
+            echo "Tag $TAG does not exist — creating at $SHA."
+            git tag -a "$TAG" -m "Release $TAG" "$SHA"
             git push origin "$TAG"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          if [ "$REMOTE_SHA" = "$SHA" ]; then
+            echo "Tag $TAG already points to $SHA — reusing."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Tag exists on a different commit.
+          if [ "$EVENT" != "workflow_dispatch" ] || [ "$FORCE" != "true" ]; then
+            echo "Tag $TAG exists at $REMOTE_SHA but HEAD is $SHA."
+            echo "Version was not bumped — skipping release build."
+            echo "To re-release this version, run the workflow manually with force=true."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Force path: move the tag, but refuse if the release was already published.
+          STATE=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || echo "missing")
+          if [ "$STATE" = "false" ]; then
+            echo "Release $TAG is already published — refusing to move the tag."
+            echo "Bump the version in src-tauri/tauri.conf.json instead."
+            exit 1
+          fi
+
+          if [ "$STATE" = "true" ]; then
+            echo "Deleting existing draft release $TAG."
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+          fi
+
+          echo "Force-moving tag $TAG from $REMOTE_SHA to $SHA."
+          git tag -fa "$TAG" -m "Release $TAG" "$SHA"
+          git push --force origin "$TAG"
+          echo "should_build=true" >> $GITHUB_OUTPUT
 
   build:
     needs: create-tag
+    if: needs.create-tag.outputs.should_build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +149,7 @@ jobs:
 
   publish:
     needs: [create-tag, build]
+    if: needs.create-tag.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Publish release

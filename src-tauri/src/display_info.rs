@@ -27,7 +27,7 @@ pub fn detect() -> DisplayInfo {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::NSScreen;
-    use objc2_foundation::{MainThreadMarker, NSRect};
+    use objc2_foundation::{MainThreadMarker, NSEdgeInsets, NSRect};
 
     let Some(mtm) = MainThreadMarker::new() else {
         return DisplayInfo::default();
@@ -39,15 +39,6 @@ pub fn detect() -> DisplayInfo {
     let frame: NSRect = screen.frame();
     let screen_width = frame.size.width;
     let screen_height = frame.size.height;
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    struct NSEdgeInsets {
-        top: f64,
-        left: f64,
-        bottom: f64,
-        right: f64,
-    }
 
     let screen_ref: &AnyObject = screen.as_ref();
 
