@@ -30,12 +30,11 @@ jobs:
       - name: Calculate next version
         id: version
         run: |
-          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1)
-          if [ -z "$LATEST" ]; then
-            LATEST="v0.0.0"
-          fi
-          VER="${LATEST#v}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+          # Read current version from tauri.conf.json
+          CURRENT=$(grep -oP '"version":\s*"\K[^"]+' src-tauri/tauri.conf.json | head -1)
+          echo "Current version: $CURRENT"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
           case "${{ inputs.bump }}" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
@@ -43,8 +42,30 @@ jobs:
             patch) PATCH=$((PATCH + 1)) ;;
           esac
 
-          echo "version=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
-          echo "Next version: ${MAJOR}.${MINOR}.${PATCH}"
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEW" >> $GITHUB_OUTPUT
+          echo "Next version: $NEW"
+
+      - name: Bump version in project files
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Update tauri.conf.json
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+
+          # Update Cargo.toml (only the [package] version, not dependencies)
+          sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+          # Update package.json
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/tauri.conf.json src-tauri/Cargo.toml package.json
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git push origin dev
 
       - name: Create Pull Request
         env:
@@ -62,5 +83,4 @@ jobs:
           - Build Tauri app for Windows and macOS
           - Publish GitHub Release with installers and auto-update manifest
 
-          **Bump type:** ${{ inputs.bump }}" \
-            --label "bump:${{ inputs.bump }}"
+          **Bump type:** ${{ inputs.bump }}"
