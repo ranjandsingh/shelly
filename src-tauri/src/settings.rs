@@ -4,13 +4,6 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HotkeyConfig {
-    pub modifiers: u32,
-    pub key: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     #[serde(default = "default_shell")]
     pub default_shell: String,
@@ -24,8 +17,8 @@ pub struct AppSettings {
     pub auto_start: bool,
     #[serde(default = "default_font_size")]
     pub font_size: u16,
-    #[serde(default)]
-    pub hotkey: Option<HotkeyConfig>,
+    #[serde(default = "default_hotkey", deserialize_with = "deserialize_hotkey")]
+    pub hotkey: String,
     #[serde(default)]
     pub notch_at_bottom: bool,
     #[serde(default = "default_panel_width")]
@@ -49,6 +42,9 @@ fn default_panel_width() -> f64 {
 fn default_panel_height() -> f64 {
     400.0
 }
+fn default_hotkey() -> String {
+    "CmdOrCtrl+`".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -59,7 +55,7 @@ impl Default for AppSettings {
             auto_launch_claude: false,
             auto_start: false,
             font_size: default_font_size(),
-            hotkey: None,
+            hotkey: default_hotkey(),
             notch_at_bottom: false,
             panel_width: default_panel_width(),
             panel_height: default_panel_height(),
@@ -92,6 +88,18 @@ pub fn save_settings(settings: &AppSettings) {
     let path = settings_path();
     if let Ok(json) = serde_json::to_string_pretty(settings) {
         let _ = fs::write(path, json);
+    }
+}
+
+fn deserialize_hotkey<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde_json::Value;
+    let value = Value::deserialize(deserializer).unwrap_or(Value::Null);
+    match value {
+        Value::String(s) if !s.is_empty() => Ok(s),
+        _ => Ok(default_hotkey()),
     }
 }
 
