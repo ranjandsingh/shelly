@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import type { TerminalSession } from "../hooks/useSessionStore";
 
 export async function createTerminal(
   sessionId: string,
@@ -69,4 +70,27 @@ export async function getHotkey(): Promise<string> {
 
 export async function setHotkey(accelerator: string): Promise<void> {
   await invoke("set_hotkey", { accelerator });
+}
+
+export async function getRecentFolders(): Promise<string[]> {
+  return invoke("get_recent_folders");
+}
+
+export async function clearRecentFolders(): Promise<void> {
+  return invoke("clear_recent_folders");
+}
+
+export async function openRecentFolder(path: string): Promise<TerminalSession> {
+  return invoke("open_recent_folder", { path });
+}
+
+export async function getPathColors(): Promise<Record<string, string>> {
+  return invoke("get_path_colors");
+}
+
+export async function setPathColor(
+  path: string,
+  color: string
+): Promise<void> {
+  return invoke("set_path_color", { path, color });
 }
