@@ -354,6 +354,15 @@ fn has_terminal(session_id: String, state: State<'_, AppState>) -> bool {
 
 // --- Session commands ---
 
+fn record_recent(state: &State<'_, AppState>, app: &AppHandle, path: &str) {
+    {
+        let mut s = safe_lock(&state.settings);
+        settings::push_recent(&mut s, path);
+        settings::save_settings(&s);
+    }
+    let _ = app.emit("recent-folders-updated", ());
+}
+
 #[tauri::command]
 fn get_sessions(state: State<'_, AppState>) -> Vec<TerminalSession> {
     let sessions = state.session_store.get_sessions();
@@ -368,6 +377,7 @@ fn get_active_session_id(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 fn add_session(
+    app: AppHandle,
     name: Option<String>,
     project_path: Option<String>,
     working_dir: Option<String>,
@@ -377,6 +387,9 @@ fn add_session(
     let session = state.session_store.add_session(name, project_path, working_dir);
     log::info!("CMD add_session: created id={}", session.id);
     maybe_save_sessions(&state);
+    if !session.working_directory.is_empty() {
+        record_recent(&state, &app, &session.working_directory);
+    }
     session
 }
 
@@ -456,6 +469,7 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
         );
         state.session_store.select_session(&session.id);
         log::info!("CMD pick_folder: created session {} for {}", session.id, session.working_directory);
+        record_recent(&state, &app, &session.working_directory);
         // Re-show and focus the panel
         do_show_panel(&app);
         let _ = app.emit("sessions-force-refresh", ());
@@ -482,6 +496,7 @@ fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
                 );
                 state.session_store.select_session(&session.id);
                 log::info!("DROP: created session for dir {}", session.working_directory);
+                record_recent(&state, app, &session.working_directory);
                 do_show_panel(app);
                 let _ = app.emit("sessions-force-refresh", ());
             } else if path.is_file() {
@@ -536,6 +551,68 @@ fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppSt
         settings::save_sessions(&sessions);
     }
     *safe_lock(&state.settings) = new_settings;
+}
+
+#[tauri::command]
+fn get_recent_folders(state: State<'_, AppState>) -> Vec<String> {
+    safe_lock(&state.settings).recent_folders.clone()
+}
+
+#[tauri::command]
+fn clear_recent_folders(state: State<'_, AppState>, app: AppHandle) {
+    {
+        let mut s = safe_lock(&state.settings);
+        s.recent_folders.clear();
+        settings::save_settings(&s);
+    }
+    let _ = app.emit("recent-folders-updated", ());
+}
+
+#[tauri::command]
+fn open_recent_folder(
+    path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<session_store::TerminalSession, String> {
+    let folder_name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    let session = state.session_store.add_session(
+        Some(folder_name),
+        Some(path.clone()),
+        Some(path.clone()),
+    );
+    state.session_store.select_session(&session.id);
+    record_recent(&state, &app, &path);
+    do_show_panel(&app);
+    let _ = app.emit("sessions-force-refresh", ());
+    Ok(session)
+}
+
+#[tauri::command]
+fn get_path_colors(state: State<'_, AppState>) -> std::collections::HashMap<String, String> {
+    safe_lock(&state.settings).path_colors.clone()
+}
+
+#[tauri::command]
+fn set_path_color(
+    path: String,
+    color: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) {
+    let norm = settings::canonicalize_path(&path);
+    {
+        let mut s = safe_lock(&state.settings);
+        if color == "auto" || color.is_empty() {
+            s.path_colors.remove(&norm);
+        } else {
+            s.path_colors.insert(norm, color);
+        }
+        settings::save_settings(&s);
+    }
+    let _ = app.emit("path-colors-updated", ());
 }
 
 // --- Auto-start commands ---
@@ -734,6 +811,11 @@ fn set_default_shell(path: String, state: State<'_, AppState>) {
     *safe_lock(&state.default_shell) = path;
 }
 
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -749,7 +831,17 @@ pub fn run() {
         let saved = settings::load_sessions();
         if !saved.is_empty() {
             log::info!("Restoring {} saved sessions", saved.len());
-            session_store.restore_sessions(saved);
+            session_store.restore_sessions(saved.clone());
+            // Record restored session paths as recent folders (in reverse order)
+            {
+                let mut s = app_settings.clone();
+                for sess in saved.iter().rev() {
+                    if !sess.working_directory.is_empty() {
+                        settings::push_recent(&mut s, &sess.working_directory);
+                    }
+                }
+                settings::save_settings(&s);
+            }
         }
     }
     session_store.ensure_default_session();
@@ -774,6 +866,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -988,6 +1081,12 @@ pub fn run() {
             get_imported_themes,
             save_imported_theme,
             delete_imported_theme,
+            get_recent_folders,
+            clear_recent_folders,
+            open_recent_folder,
+            get_path_colors,
+            set_path_color,
+            restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

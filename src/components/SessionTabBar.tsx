@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalSession } from "../hooks/useSessionStore";
 import { SettingsMenu } from "./SettingsMenu";
+import { RecentFoldersDropdown } from "./RecentFoldersDropdown";
+import { resolveTabColor, NAMED_COLORS, PALETTE_ORDER } from "../lib/tabColor";
+import { getPathColors, setPathColor } from "../lib/ipc";
 
 interface SessionTabBarProps {
   sessions: TerminalSession[];
@@ -91,6 +94,9 @@ export function SessionTabBar({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const hint = hints[hintIdxState % hints.length];
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [pathColors, setPathColors] = useState<Record<string, string>>({});
+  const recentBtnRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
@@ -146,6 +152,38 @@ export function SessionTabBar({
     }
   }, [renamingId]);
 
+  // --- Load path colors + subscribe to updates ---
+  useEffect(() => {
+    getPathColors().then(setPathColors);
+    let un: (() => void) | null = null;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      listen("path-colors-updated", async () => {
+        setPathColors(await getPathColors());
+      }).then(fn => { un = fn; });
+    });
+    return () => { un?.(); };
+  }, []);
+
+  const cwdCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of sessions) {
+      const cwd = s.workingDirectory;
+      if (!cwd) continue;
+      m.set(cwd, (m.get(cwd) ?? 0) + 1);
+    }
+    return m;
+  }, [sessions]);
+
+  const openPaths = useMemo(
+    () => new Set(Array.from(cwdCounts.keys())),
+    [cwdCounts],
+  );
+
+  const colorForPath = useCallback(
+    (p: string) => resolveTabColor(p, cwdCounts.get(p) ?? 0, pathColors),
+    [cwdCounts, pathColors],
+  );
+
   const handleContextMenu = (e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, sessionId });
@@ -197,6 +235,10 @@ export function SessionTabBar({
             onClick={() => onSelect(s.id)}
             onContextMenu={(e) => handleContextMenu(e, s.id)}
           >
+            {(() => {
+              const color = colorForPath(s.workingDirectory);
+              return color ? <span className="tab-color-strip" style={{ background: color }} /> : null;
+            })()}
             {STATUS_ICON[s.status] || STATUS_ICON.Idle}
             {renamingId === s.id ? (
               <input
@@ -242,6 +284,42 @@ export function SessionTabBar({
           <div className="menu-item" onClick={() => startRename(contextMenu.sessionId)}>
             Rename
           </div>
+          {(() => {
+            const sess = sessions.find(s => s.id === contextMenu.sessionId);
+            if (!sess) return null;
+            const cwd = sess.workingDirectory;
+            const currentOverride = pathColors[cwd] ?? "auto";
+            const apply = async (color: string) => {
+              await setPathColor(cwd, color);
+              setContextMenu(null);
+            };
+            return (
+              <>
+                <div className="ctx-section-label">Color</div>
+                <div className="ctx-color-palette">
+                  <button
+                    className={`ctx-swatch auto${currentOverride === "auto" ? " active" : ""}`}
+                    onClick={() => apply("auto")}
+                    title="Auto"
+                  >A</button>
+                  {PALETTE_ORDER.map(name => (
+                    <button
+                      key={name}
+                      className={`ctx-swatch${currentOverride === name ? " active" : ""}`}
+                      style={{ background: NAMED_COLORS[name] }}
+                      onClick={() => apply(name)}
+                      title={name}
+                    />
+                  ))}
+                  <button
+                    className={`ctx-swatch none${currentOverride === "none" ? " active" : ""}`}
+                    onClick={() => apply("none")}
+                    title="None"
+                  >∅</button>
+                </div>
+              </>
+            );
+          })()}
           {sessions.length > 1 && (
             <div className="menu-item danger" onClick={() => { onClose(contextMenu.sessionId); setContextMenu(null); }}>
               Close
@@ -252,13 +330,31 @@ export function SessionTabBar({
 
       {/* Right buttons — always visible, never affected by overflow */}
       <button className="tabbar-btn" onClick={async () => { try { await invoke("pick_folder"); onRefresh(); } catch {} }} title="Open folder">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{transform: "scaleX(-1)"}}>
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
         </svg>
       </button>
+      <div className="recent-dropdown-wrap" ref={recentBtnRef}>
+        <button
+          className="tabbar-btn"
+          onClick={() => setRecentOpen(v => !v)}
+          title="Recent folders"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
+        <RecentFoldersDropdown
+          open={recentOpen}
+          onClose={() => setRecentOpen(false)}
+          onOpened={onRefresh}
+          openPaths={openPaths}
+          colorForPath={colorForPath}
+        />
+      </div>
       <button className={`tabbar-btn pin-btn ${isPinned ? "on" : ""}`} onClick={async () => { const n = !isPinned; setIsPinned(n); await invoke("set_pinned", { pinned: n }); }} title={isPinned ? "Unpin" : "Pin"}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={isPinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{transform: "rotate(45deg)"}}>
-          <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1.5a2.5 2.5 0 1 0 0-5h-9a2.5 2.5 0 0 0 0 5H9v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707-.195-.195.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
         </svg>
       </button>
       <div className="tabbar-menu-wrap" ref={menuRef}>
