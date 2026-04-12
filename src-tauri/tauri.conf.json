@@ -17,11 +17,11 @@
         "width": 720,
         "height": 400,
         "decorations": false,
+        "transparent": true,
         "alwaysOnTop": true,
         "resizable": true,
         "visible": false,
-        "skipTaskbar": true,
-        "backgroundColor": "#181818"
+        "skipTaskbar": true
       },
       {
         "label": "notch",
