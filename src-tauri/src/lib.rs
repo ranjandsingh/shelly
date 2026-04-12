@@ -1,4 +1,5 @@
 mod auto_start;
+mod display_info;
 mod ide_detector;
 mod pty;
 mod session_store;
