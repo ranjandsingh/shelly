@@ -539,6 +539,35 @@ fn quit_shelly(app: AppHandle) {
 }
 
 #[tauri::command]
+fn get_hotkey(state: State<'_, AppState>) -> String {
+    safe_lock(&state.settings).hotkey.clone()
+}
+
+#[tauri::command]
+fn set_hotkey(accelerator: String, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let trimmed = accelerator.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("Empty accelerator".to_string());
+    }
+    let gs = app.global_shortcut();
+    // Unregister previous first
+    let prev = safe_lock(&state.settings).hotkey.clone();
+    let _ = gs.unregister(prev.as_str());
+    // Register new
+    if let Err(e) = gs.register(trimmed.as_str()) {
+        // Re-register previous so user isn't left with no hotkey
+        let _ = gs.register(prev.as_str());
+        return Err(format!("Failed to register {trimmed}: {e}"));
+    }
+    // Persist
+    let mut s = safe_lock(&state.settings);
+    s.hotkey = trimmed;
+    settings::save_settings(&s);
+    Ok(())
+}
+
+#[tauri::command]
 fn shrink_notch(app: AppHandle) {
     log::info!("CMD shrink_notch");
     if let Some(notch) = app.get_webview_window("notch") {
@@ -744,11 +773,16 @@ pub fn run() {
                 });
             }
 
-            // Register default hotkey: CmdOrCtrl+`
-            log::info!("SETUP: registering global shortcut CmdOrCtrl+`...");
+            // Register trigger hotkey from settings
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            if let Err(e) = app.global_shortcut().register("CmdOrCtrl+`") {
-                log::warn!("SETUP: Failed to register global shortcut: {e}");
+            let hotkey_str = app.try_state::<AppState>()
+                .map(|s| safe_lock(&s.settings).hotkey.clone())
+                .unwrap_or_else(|| "CmdOrCtrl+`".to_string());
+            log::info!("SETUP: registering global shortcut {hotkey_str}");
+            if let Err(e) = app.global_shortcut().register(hotkey_str.as_str()) {
+                log::warn!("SETUP: failed to register {hotkey_str}: {e}");
+                // Fall back to default
+                let _ = app.global_shortcut().register("CmdOrCtrl+`");
             } else {
                 log::info!("SETUP: global shortcut registered");
             }
@@ -813,6 +847,8 @@ pub fn run() {
             get_available_shells_cmd,
             get_default_shell,
             set_default_shell,
+            get_hotkey,
+            set_hotkey,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
