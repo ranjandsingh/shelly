@@ -354,6 +354,15 @@ fn has_terminal(session_id: String, state: State<'_, AppState>) -> bool {
 
 // --- Session commands ---
 
+fn record_recent(state: &State<'_, AppState>, app: &AppHandle, path: &str) {
+    {
+        let mut s = safe_lock(&state.settings);
+        settings::push_recent(&mut s, path);
+        settings::save_settings(&s);
+    }
+    let _ = app.emit("recent-folders-updated", ());
+}
+
 #[tauri::command]
 fn get_sessions(state: State<'_, AppState>) -> Vec<TerminalSession> {
     let sessions = state.session_store.get_sessions();
@@ -368,6 +377,7 @@ fn get_active_session_id(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 fn add_session(
+    app: AppHandle,
     name: Option<String>,
     project_path: Option<String>,
     working_dir: Option<String>,
@@ -377,6 +387,9 @@ fn add_session(
     let session = state.session_store.add_session(name, project_path, working_dir);
     log::info!("CMD add_session: created id={}", session.id);
     maybe_save_sessions(&state);
+    if !session.working_directory.is_empty() {
+        record_recent(&state, &app, &session.working_directory);
+    }
     session
 }
 
@@ -456,6 +469,7 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
         );
         state.session_store.select_session(&session.id);
         log::info!("CMD pick_folder: created session {} for {}", session.id, session.working_directory);
+        record_recent(&state, &app, &session.working_directory);
         // Re-show and focus the panel
         do_show_panel(&app);
         let _ = app.emit("sessions-force-refresh", ());
@@ -482,6 +496,7 @@ fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
                 );
                 state.session_store.select_session(&session.id);
                 log::info!("DROP: created session for dir {}", session.working_directory);
+                record_recent(&state, app, &session.working_directory);
                 do_show_panel(app);
                 let _ = app.emit("sessions-force-refresh", ());
             } else if path.is_file() {
@@ -749,7 +764,17 @@ pub fn run() {
         let saved = settings::load_sessions();
         if !saved.is_empty() {
             log::info!("Restoring {} saved sessions", saved.len());
-            session_store.restore_sessions(saved);
+            session_store.restore_sessions(saved.clone());
+            // Record restored session paths as recent folders (in reverse order)
+            {
+                let mut s = app_settings.clone();
+                for sess in saved.iter().rev() {
+                    if !sess.working_directory.is_empty() {
+                        settings::push_recent(&mut s, &sess.working_directory);
+                    }
+                }
+                settings::save_settings(&s);
+            }
         }
     }
     session_store.ensure_default_session();
