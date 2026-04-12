@@ -25,6 +25,39 @@ pub struct AppSettings {
     pub panel_width: f64,
     #[serde(default = "default_panel_height")]
     pub panel_height: f64,
+    #[serde(default)]
+    pub attention: AttentionSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttentionSettings {
+    #[serde(default = "default_attention_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_trigger_statuses")]
+    pub trigger_statuses: Vec<TerminalStatus>,
+    #[serde(default = "default_steal_focus")]
+    pub steal_focus: bool,
+    #[serde(default = "default_auto_hide_ms")]
+    pub auto_hide_timeout_ms: u64,
+}
+
+fn default_attention_enabled() -> bool { true }
+fn default_steal_focus() -> bool { true }
+fn default_auto_hide_ms() -> u64 { 5000 }
+fn default_trigger_statuses() -> Vec<TerminalStatus> {
+    vec![TerminalStatus::TaskCompleted, TerminalStatus::WaitingForInput]
+}
+
+impl Default for AttentionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_attention_enabled(),
+            trigger_statuses: default_trigger_statuses(),
+            steal_focus: default_steal_focus(),
+            auto_hide_timeout_ms: default_auto_hide_ms(),
+        }
+    }
 }
 
 fn default_shell() -> String {
@@ -59,6 +92,7 @@ impl Default for AppSettings {
             notch_at_bottom: false,
             panel_width: default_panel_width(),
             panel_height: default_panel_height(),
+            attention: AttentionSettings::default(),
         }
     }
 }
@@ -106,6 +140,7 @@ where
 // --- Session persistence ---
 
 use crate::session_store::TerminalSession;
+use crate::session_store::TerminalStatus;
 
 fn sessions_path() -> PathBuf {
     settings_dir().join("sessions.json")
@@ -123,5 +158,13 @@ pub fn load_sessions() -> Vec<TerminalSession> {
         serde_json::from_str(&data).unwrap_or_default()
     } else {
         Vec::new()
+    }
+}
+
+impl AttentionSettings {
+    /// Clamp the timeout to a sane range.
+    pub fn normalized(mut self) -> Self {
+        self.auto_hide_timeout_ms = self.auto_hide_timeout_ms.clamp(1000, 30000);
+        self
     }
 }

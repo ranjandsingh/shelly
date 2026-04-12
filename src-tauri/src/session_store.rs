@@ -23,6 +23,8 @@ pub struct TerminalSession {
     pub status: TerminalStatus,
     pub is_active: bool,
     pub skip_auto_launch: bool,
+    #[serde(default)]
+    pub popped_for_status: bool,
 }
 
 pub struct SessionStore {
@@ -68,6 +70,7 @@ impl SessionStore {
             status: TerminalStatus::Idle,
             is_active: false,
             skip_auto_launch: false,
+            popped_for_status: false,
         };
 
         let mut sessions = safe_lock(&self.sessions);
@@ -124,6 +127,9 @@ impl SessionStore {
     pub fn update_status(&self, session_id: &str, status: TerminalStatus) {
         let mut sessions = safe_lock(&self.sessions);
         if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
+            if s.status != status {
+                s.popped_for_status = false;
+            }
             s.status = status;
         }
     }
@@ -153,6 +159,7 @@ impl SessionStore {
         for mut s in saved {
             s.has_started = false;
             s.status = TerminalStatus::Idle;
+            s.popped_for_status = false;
             // Only the previously active session should auto-launch claude
             if s.is_active {
                 active_id = Some(s.id.clone());
@@ -176,6 +183,37 @@ impl SessionStore {
                 self.update_is_active(&id);
             }
         }
+    }
+
+    /// Set popped_for_status=true atomically. Returns true if it transitioned from false (i.e. caller should emit).
+    pub fn try_mark_popped(&self, session_id: &str) -> bool {
+        let mut sessions = safe_lock(&self.sessions);
+        if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
+            if !s.popped_for_status {
+                s.popped_for_status = true;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Force-clear TaskCompleted/WaitingForInput/Interrupted back to Idle.
+    /// Returns true if a change occurred.
+    pub fn mark_interacted(&self, session_id: &str) -> bool {
+        let mut sessions = safe_lock(&self.sessions);
+        if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
+            if matches!(
+                s.status,
+                TerminalStatus::TaskCompleted
+                    | TerminalStatus::WaitingForInput
+                    | TerminalStatus::Interrupted
+            ) {
+                s.status = TerminalStatus::Idle;
+                s.popped_for_status = false;
+                return true;
+            }
+        }
+        false
     }
 
     fn update_is_active(&self, active_id: &str) {
