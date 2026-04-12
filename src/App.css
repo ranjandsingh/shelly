@@ -398,3 +398,17 @@ html, body, #root {
   opacity: 1;
 }
 
+.settings-menu button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e0e0e0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.settings-menu button.mod-on {
+  background: rgba(74, 158, 255, 0.4);
+  border-color: rgba(74, 158, 255, 0.7);
+}
+

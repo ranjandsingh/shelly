@@ -62,3 +62,11 @@ export async function onProcessExited(
 ): Promise<UnlistenFn> {
   return listen<string>("process-exited", (e) => callback(e.payload));
 }
+
+export async function getHotkey(): Promise<string> {
+  return invoke<string>("get_hotkey");
+}
+
+export async function setHotkey(accelerator: string): Promise<void> {
+  await invoke("set_hotkey", { accelerator });
+}

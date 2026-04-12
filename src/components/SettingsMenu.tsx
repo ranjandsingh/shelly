@@ -2,6 +2,52 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { THEMES } from "../lib/themes";
 
+const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
+
+function parseAccelerator(accel: string): { ctrl: boolean; alt: boolean; shift: boolean; cmd: boolean; key: string } {
+  const parts = accel.split("+").map((p) => p.trim());
+  const mods = { ctrl: false, alt: false, shift: false, cmd: false };
+  let key = "";
+  for (const p of parts) {
+    const lower = p.toLowerCase();
+    if (lower === "ctrl" || lower === "control") mods.ctrl = true;
+    else if (lower === "alt" || lower === "option") mods.alt = true;
+    else if (lower === "shift") mods.shift = true;
+    else if (lower === "cmd" || lower === "command" || lower === "meta" || lower === "super") mods.cmd = true;
+    else if (lower === "cmdorctrl") { if (IS_MAC) mods.cmd = true; else mods.ctrl = true; }
+    else key = p;
+  }
+  return { ...mods, key };
+}
+
+function buildAccelerator(mods: { ctrl: boolean; alt: boolean; shift: boolean; cmd: boolean }, key: string): string {
+  const parts: string[] = [];
+  if (mods.ctrl) parts.push("Ctrl");
+  if (mods.alt) parts.push("Alt");
+  if (mods.shift) parts.push("Shift");
+  if (mods.cmd) parts.push(IS_MAC ? "Cmd" : "Super");
+  if (key) parts.push(key);
+  return parts.join("+");
+}
+
+function prettyAccelerator(accel: string): string {
+  const p = parseAccelerator(accel);
+  const parts: string[] = [];
+  if (IS_MAC) {
+    if (p.ctrl) parts.push("\u2303");
+    if (p.alt) parts.push("\u2325");
+    if (p.shift) parts.push("\u21E7");
+    if (p.cmd) parts.push("\u2318");
+  } else {
+    if (p.ctrl) parts.push("Ctrl");
+    if (p.alt) parts.push("Alt");
+    if (p.shift) parts.push("Shift");
+    if (p.cmd) parts.push("Win");
+  }
+  if (p.key) parts.push(p.key);
+  return parts.join(IS_MAC ? "" : "+");
+}
+
 interface SettingsMenuProps {
   onClose: () => void;
   onThemeChange: (themeId: string) => void;
@@ -40,11 +86,16 @@ export function SettingsMenu({
   const [shells, setShells] = useState<ShellInfo[]>([]);
   const [currentShell, setCurrentShell] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [hotkey, setHotkeyState] = useState<string>("CmdOrCtrl+`");
+  const [captureMods, setCaptureMods] = useState<{ ctrl: boolean; alt: boolean; shift: boolean; cmd: boolean }>({ ctrl: false, alt: false, shift: false, cmd: false });
+  const [captureKey, setCaptureKey] = useState<string>("");
+  const [hotkeyError, setHotkeyError] = useState<string>("");
 
   useEffect(() => {
     invoke<ShellInfo[]>("get_available_shells_cmd").then(setShells);
     invoke<string>("get_default_shell").then(setCurrentShell);
     invoke<AppSettings>("get_settings").then(setSettings);
+    invoke<string>("get_hotkey").then(setHotkeyState);
   }, []);
 
   const updateSetting = async (key: string, value: any) => {
@@ -97,6 +148,88 @@ export function SettingsMenu({
   };
 
   // Sub-menu renderers
+  if (subMenu === "hotkey") {
+    const anyMod = captureMods.ctrl || captureMods.alt || captureMods.shift || captureMods.cmd;
+    const preview = buildAccelerator(captureMods, captureKey);
+    const canSave = anyMod && captureKey.length > 0;
+
+    const toggleMod = (mod: keyof typeof captureMods) => {
+      setCaptureMods((m) => ({ ...m, [mod]: !m[mod] }));
+      setHotkeyError("");
+    };
+
+    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+      e.preventDefault();
+      const code = e.code;
+      let label = e.key;
+      if (code === "Backquote") label = "`";
+      else if (code === "Space") label = "Space";
+      else if (/^Key[A-Z]$/.test(code)) label = code.slice(3);
+      else if (/^Digit\d$/.test(code)) label = code.slice(5);
+      else if (code.startsWith("F") && /^F\d+$/.test(code)) label = code;
+      else if (e.key.length === 1) label = e.key.toUpperCase();
+      setCaptureKey(label);
+      setHotkeyError("");
+    };
+
+    const handleSave = async () => {
+      if (!canSave) {
+        setHotkeyError("Pick at least one modifier and one key.");
+        return;
+      }
+      try {
+        await invoke("set_hotkey", { accelerator: preview });
+        setHotkeyState(preview);
+        setSubMenu(null);
+      } catch (e: any) {
+        setHotkeyError(String(e));
+      }
+    };
+
+    const handleReset = async () => {
+      try {
+        await invoke("set_hotkey", { accelerator: "CmdOrCtrl+`" });
+        setHotkeyState("CmdOrCtrl+`");
+        setSubMenu(null);
+      } catch (e: any) {
+        setHotkeyError(String(e));
+      }
+    };
+
+    return (
+      <div
+        className="settings-menu"
+        tabIndex={0}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
+      >
+        <div className="menu-item back" onClick={() => setSubMenu(null)}>
+          &#x2190; Trigger Shortcut
+        </div>
+        <div className="menu-separator" />
+        <div className="menu-item" style={{ gap: 8, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => toggleMod("ctrl")} className={captureMods.ctrl ? "mod-on" : ""}>Ctrl</button>
+            <button onClick={() => toggleMod("alt")} className={captureMods.alt ? "mod-on" : ""}>{IS_MAC ? "Opt" : "Alt"}</button>
+            <button onClick={() => toggleMod("shift")} className={captureMods.shift ? "mod-on" : ""}>Shift</button>
+            <button onClick={() => toggleMod("cmd")} className={captureMods.cmd ? "mod-on" : ""}>{IS_MAC ? "Cmd" : "Win"}</button>
+          </div>
+        </div>
+        <div className="menu-item">
+          Key: <span className="menu-value">{captureKey || "press any key"}</span>
+        </div>
+        <div className="menu-item">
+          Preview: <span className="menu-value">{preview || "\u2014"}</span>
+        </div>
+        {hotkeyError && <div className="menu-item" style={{ color: "#ef5350" }}>{hotkeyError}</div>}
+        <div className="menu-separator" />
+        <div className="menu-item" onClick={handleSave} style={{ opacity: canSave ? 1 : 0.5 }}>Save</div>
+        <div className="menu-item" onClick={handleReset}>Reset to default</div>
+      </div>
+    );
+  }
+
   if (subMenu === "shell") {
     return (
       <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
@@ -188,6 +321,19 @@ export function SettingsMenu({
         <span className="menu-value">
           {shells.find((s) => s.path === currentShell)?.label || "..."}
         </span>
+      </div>
+      <div
+        className="menu-item arrow"
+        onClick={() => {
+          const parsed = parseAccelerator(hotkey);
+          setCaptureMods({ ctrl: parsed.ctrl, alt: parsed.alt, shift: parsed.shift, cmd: parsed.cmd });
+          setCaptureKey(parsed.key);
+          setHotkeyError("");
+          setSubMenu("hotkey");
+        }}
+      >
+        Trigger Shortcut
+        <span className="menu-value">{prettyAccelerator(hotkey)}</span>
       </div>
       {settings && (
         <>
