@@ -1,4 +1,5 @@
 mod auto_start;
+mod display_info;
 mod ide_detector;
 mod pty;
 mod session_store;
@@ -7,6 +8,7 @@ mod shell_detect;
 mod sleep_prevention;
 mod sound;
 mod status_parser;
+mod themes_store;
 mod tray;
 mod util;
 
@@ -32,6 +34,9 @@ struct AppState {
     has_shown_once: Mutex<bool>,
     animating: Mutex<bool>,
     panel_size: Mutex<(f64, f64)>,
+    display_info: Mutex<display_info::DisplayInfo>,
+    #[cfg(windows)]
+    previous_foreground: Mutex<Option<isize>>,
 }
 
 const PANEL_W: f64 = 720.0;
@@ -65,11 +70,58 @@ fn get_panel_size(app: &AppHandle) -> (f64, f64) {
         .unwrap_or((PANEL_W, PANEL_H))
 }
 
+fn get_top_inset(app: &AppHandle) -> f64 {
+    app.try_state::<AppState>()
+        .map(|s| safe_lock(&s.display_info).top_inset)
+        .unwrap_or(0.0)
+}
+
+#[cfg(windows)]
+fn capture_previous_foreground(app: &AppHandle) {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let Some(state) = app.try_state::<AppState>() else { return; };
+    let fg = unsafe { GetForegroundWindow() };
+    if fg.0.is_null() { return; }
+    let fg_isize = fg.0 as isize;
+
+    // Skip if the foreground window belongs to Shelly (main, notch).
+    for label in ["main", "notch"] {
+        if let Some(win) = app.get_webview_window(label) {
+            if let Ok(h) = win.hwnd() {
+                if h.0 as isize == fg_isize { return; }
+            }
+        }
+    }
+    *safe_lock(&state.previous_foreground) = Some(fg_isize);
+}
+
+#[cfg(not(windows))]
+fn capture_previous_foreground(_app: &AppHandle) {}
+
+#[cfg(windows)]
+fn restore_previous_foreground(app: &AppHandle) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, SetForegroundWindow};
+    let Some(state) = app.try_state::<AppState>() else { return; };
+    let Some(prev) = safe_lock(&state.previous_foreground).take() else { return; };
+    let hwnd = HWND(prev as *mut _);
+    unsafe {
+        if IsWindow(hwnd).as_bool() {
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn restore_previous_foreground(_app: &AppHandle) {}
+
 fn do_show_panel(app: &AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if main_win.is_visible().unwrap_or(false) { return; }
         if is_animating(app) { return; }
         set_animating(app, true);
+
+        capture_previous_foreground(app);
 
         let sw = get_screen_width(app);
         let (target_w, target_h) = get_panel_size(app);
@@ -81,7 +133,7 @@ fn do_show_panel(app: &AppHandle) {
         // Start from pill-like shape: small, centered at top
         let start_w = 140.0_f64;
         let start_h = 38.0_f64;
-        let start_y: f64 = 0.0;
+        let start_y: f64 = get_top_inset(app);
 
         // Hide notch so it doesn't overlap with panel animation
         if let Some(notch) = app.get_webview_window("notch") {
@@ -138,7 +190,7 @@ fn do_show_panel(app: &AppHandle) {
             // Snap to final
             if let Some(win) = handle.get_webview_window("main") {
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
-                let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, target_w), 0));
+                let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, target_w), start_y as i32));
             }
             let _ = handle.emit("panel-animating", false);
             set_animating(&handle, false);
@@ -158,6 +210,7 @@ fn do_hide_panel(app: &AppHandle) {
 
         let handle = app.clone();
         std::thread::spawn(move || {
+            let top_y = get_top_inset(&handle);
             let steps: u64 = 12;
             let total_ms: u64 = 180;
             let sw = get_screen_width(&handle);
@@ -175,7 +228,7 @@ fn do_hide_panel(app: &AppHandle) {
 
                 if let Some(win) = handle.get_webview_window("main") {
                     let _ = win.set_size(tauri::LogicalSize::new(w, h));
-                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), 0));
+                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), top_y as i32));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
             }
@@ -187,6 +240,8 @@ fn do_hide_panel(app: &AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
             }
+            // Hand focus back to the app the user was on before opening Shelly.
+            restore_previous_foreground(&handle);
             // Restore notch after panel is fully hidden
             if let Some(notch) = handle.get_webview_window("notch") {
                 let _ = notch.show();
@@ -251,7 +306,7 @@ fn send_startup_command(
 
     if should_launch_claude {
         log::info!("CMD send_startup_command: session={session_id}, launching claude");
-        state.pty_manager.write_input(id, b"claude\r\n")
+        state.pty_manager.write_input(id, b"claude --continue\r\n")
     } else {
         log::info!("CMD send_startup_command: session={session_id}, no auto-launch needed");
         Ok(())
@@ -539,6 +594,35 @@ fn quit_shelly(app: AppHandle) {
 }
 
 #[tauri::command]
+fn get_hotkey(state: State<'_, AppState>) -> String {
+    safe_lock(&state.settings).hotkey.clone()
+}
+
+#[tauri::command]
+fn set_hotkey(accelerator: String, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let trimmed = accelerator.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("Empty accelerator".to_string());
+    }
+    let gs = app.global_shortcut();
+    // Unregister previous first
+    let prev = safe_lock(&state.settings).hotkey.clone();
+    let _ = gs.unregister(prev.as_str());
+    // Register new
+    if let Err(e) = gs.register(trimmed.as_str()) {
+        // Re-register previous so user isn't left with no hotkey
+        let _ = gs.register(prev.as_str());
+        return Err(format!("Failed to register {trimmed}: {e}"));
+    }
+    // Persist
+    let mut s = safe_lock(&state.settings);
+    s.hotkey = trimmed;
+    settings::save_settings(&s);
+    Ok(())
+}
+
+#[tauri::command]
 fn shrink_notch(app: AppHandle) {
     log::info!("CMD shrink_notch");
     if let Some(notch) = app.get_webview_window("notch") {
@@ -549,7 +633,7 @@ fn shrink_notch(app: AppHandle) {
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
             let x = ((sw - w) / 2.0) as i32;
-            let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+            let _ = notch.set_position(tauri::LogicalPosition::new(x, get_top_inset(&app) as i32));
         }
     }
 }
@@ -565,7 +649,7 @@ fn expand_notch(app: AppHandle) {
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
             let x = ((sw - w) / 2.0) as i32;
-            let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+            let _ = notch.set_position(tauri::LogicalPosition::new(x, get_top_inset(&app) as i32));
         }
     }
 }
@@ -576,9 +660,61 @@ fn position_panel_center(app: AppHandle) {
         let sw = get_screen_width(&app);
         let (w, _) = get_panel_size(&app);
         let x = center_x(sw, w);
-        let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
-        log::info!("CMD position_panel_center: x={x}, y=0");
+        let _ = main_win.set_position(tauri::LogicalPosition::new(x, get_top_inset(&app) as i32));
+        log::info!("CMD position_panel_center: x={x}");
     }
+}
+
+#[tauri::command]
+fn get_display_info(state: State<'_, AppState>) -> display_info::DisplayInfo {
+    safe_lock(&state.display_info).clone()
+}
+
+#[tauri::command]
+fn mark_session_interacted(session_id: String, state: State<'_, AppState>, app: AppHandle) {
+    if state.session_store.mark_interacted(&session_id) {
+        let _ = app.emit(
+            "status-changed",
+            serde_json::json!({
+                "sessionId": session_id,
+                "status": session_store::TerminalStatus::Idle,
+            }),
+        );
+        let _ = app.emit("sessions-updated", &state.session_store.get_sessions());
+    }
+}
+
+#[tauri::command]
+fn get_attention_settings(state: State<'_, AppState>) -> settings::AttentionSettings {
+    util::safe_lock(&state.settings).attention.clone()
+}
+
+#[tauri::command]
+fn set_attention_settings(
+    new_attention: settings::AttentionSettings,
+    state: State<'_, AppState>,
+) {
+    let normalized = new_attention.normalized();
+    {
+        let mut s = util::safe_lock(&state.settings);
+        s.attention = normalized;
+        settings::save_settings(&s);
+    }
+}
+
+#[tauri::command]
+fn get_imported_themes() -> Vec<themes_store::ImportedTheme> {
+    themes_store::load_all()
+}
+
+#[tauri::command]
+fn save_imported_theme(theme: themes_store::ImportedTheme) -> Vec<themes_store::ImportedTheme> {
+    themes_store::insert_or_replace(theme)
+}
+
+#[tauri::command]
+fn delete_imported_theme(id: String) -> Vec<themes_store::ImportedTheme> {
+    themes_store::delete(&id)
 }
 
 // --- Shell commands ---
@@ -631,9 +767,13 @@ pub fn run() {
             has_shown_once: Mutex::new(false),
             animating: Mutex::new(false),
             panel_size: Mutex::new((PANEL_W, PANEL_H)),
+            display_info: Mutex::new(display_info::DisplayInfo::default()),
+            #[cfg(windows)]
+            previous_foreground: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -652,15 +792,22 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             log::info!("SETUP: tray initialized");
 
-            // Position notch window at top-center of screen (greeting size: 140x46)
+            // Detect display (notch / top inset)
+            let info = display_info::detect();
+            log::info!("SETUP: display_info = {info:?}");
+            if let Some(state) = app.try_state::<AppState>() {
+                *safe_lock(&state.display_info) = info;
+            }
+
+            // Position notch window at top-center of screen (greeting size: 260x46)
             if let Some(notch) = app.get_webview_window("notch") {
                 log::info!("SETUP: positioning notch window...");
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Some(monitor) = handle.primary_monitor().ok().flatten() {
                         let screen_width = monitor.size().width as f64 / monitor.scale_factor();
-                        let x = ((screen_width - 140.0) / 2.0) as i32;
-                        let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+                        let x = ((screen_width - 260.0) / 2.0) as i32;
+                        let _ = notch.set_position(tauri::LogicalPosition::new(x, get_top_inset(&handle) as i32));
                         log::info!("SETUP: notch positioned at x={x}");
                     }
                     let _ = notch.show();
@@ -744,11 +891,30 @@ pub fn run() {
                 });
             }
 
-            // Register default hotkey: CmdOrCtrl+`
-            log::info!("SETUP: registering global shortcut CmdOrCtrl+`...");
+            // Pre-warm main window so first user-triggered show finds a hot webview.
+            if let Some(main_win) = app.get_webview_window("main") {
+                let (target_w, target_h) = (PANEL_W, PANEL_H);
+                tauri::async_runtime::spawn(async move {
+                    // Offscreen position far from the visible area
+                    let _ = main_win.set_size(tauri::LogicalSize::new(target_w, target_h));
+                    let _ = main_win.set_position(tauri::LogicalPosition::new(-4000, -4000));
+                    let _ = main_win.show();
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    let _ = main_win.hide();
+                    log::info!("SETUP: main window pre-warmed");
+                });
+            }
+
+            // Register trigger hotkey from settings
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            if let Err(e) = app.global_shortcut().register("CmdOrCtrl+`") {
-                log::warn!("SETUP: Failed to register global shortcut: {e}");
+            let hotkey_str = app.try_state::<AppState>()
+                .map(|s| safe_lock(&s.settings).hotkey.clone())
+                .unwrap_or_else(|| "CmdOrCtrl+`".to_string());
+            log::info!("SETUP: registering global shortcut {hotkey_str}");
+            if let Err(e) = app.global_shortcut().register(hotkey_str.as_str()) {
+                log::warn!("SETUP: failed to register {hotkey_str}: {e}");
+                // Fall back to default
+                let _ = app.global_shortcut().register("CmdOrCtrl+`");
             } else {
                 log::info!("SETUP: global shortcut registered");
             }
@@ -813,6 +979,15 @@ pub fn run() {
             get_available_shells_cmd,
             get_default_shell,
             set_default_shell,
+            get_hotkey,
+            set_hotkey,
+            get_display_info,
+            mark_session_interacted,
+            get_attention_settings,
+            set_attention_settings,
+            get_imported_themes,
+            save_imported_theme,
+            delete_imported_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

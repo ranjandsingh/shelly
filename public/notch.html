@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --top-inset: 0px;
+    --notch-gap: 4px;
+  }
   html, body {
     width: 100%;
     height: 100%;
@@ -18,13 +22,13 @@
     display: flex;
     justify-content: center;
     align-items: flex-start;
+    padding-top: var(--top-inset);
   }
 
   /* === Shared bar shape === */
   .bar {
     display: flex;
     align-items: center;
-    justify-content: center;
     background: rgba(0, 0, 0, 0.55);
     border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 0 10px;
@@ -35,37 +39,38 @@
 
   /* === Greeting state === */
   .bar.greeting {
-    gap: 6px;
-    border-radius: 16px;
-    height: 36px;
+    gap: 10px;
+    border-radius: 18px;
+    height: 44px;
+    padding: 0 16px;
     opacity: 1;
+    justify-content: center;
     transition: opacity 0.4s cubic-bezier(0.33, 0, 0.67, 1);
   }
-  .bar.greeting.fading {
-    opacity: 0;
-  }
+  .bar.greeting.fading { opacity: 0; }
   .bar.greeting.hidden { display: none; }
-  .greeting-icon { width: 28px; height: 28px; border-radius: 4px; }
+  .greeting-icon { width: 34px; height: 34px; border-radius: 5px; }
   .greeting-text {
     color: #e0e0e0;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
   }
 
   /* === Pill state (collapsed) === */
   .bar.pill {
     display: none;
-    gap: 4px;
+    gap: var(--notch-gap);
     border-radius: 8px;
     height: 18px;
     min-width: 48px;
     padding: 0 8px;
+    justify-content: space-between;
     transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .bar.pill.active { display: flex; }
   .bar.pill.has-icon {
     height: 30px;
-    min-width: 84px;
+    min-width: calc(84px + var(--notch-gap));
   }
   .bar.pill.expanded {
     background: rgba(0, 0, 0, 0.65);
@@ -77,29 +82,20 @@
     width: 24px;
     height: 24px;
     border-radius: 3px;
-    margin-right: 4px;
     opacity: 0;
     transition: opacity 0.3s cubic-bezier(0.33, 0, 0.67, 1);
   }
   .pill-icon.visible { opacity: 1; }
 
-  /* === Status indicators (14x14) === */
+  /* === Status indicators === */
   .indicators { display: flex; gap: 6px; align-items: center; }
 
-  .indicator {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
+  .indicator { display: flex; align-items: center; gap: 2px; }
 
-  /* Idle dot — small, gray */
   .idle-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #666;
+    width: 6px; height: 6px; border-radius: 50%; background: #666;
   }
 
-  /* Working spinner — 14x14 orange arc */
   .working-spinner {
     width: 14px; height: 14px;
     border: 2px solid transparent;
@@ -109,7 +105,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* WaitingForInput triangle — 14x14 orange, pulses */
   .waiting-tri {
     width: 0; height: 0;
     border-left: 7px solid transparent;
@@ -119,27 +114,15 @@
   }
   @keyframes pulse { from { transform: scale(0.7); } to { transform: scale(1.2); } }
 
-  /* TaskCompleted checkmark — green */
   .completed-chk {
-    color: #4caf50;
-    font-size: 14px;
-    font-weight: bold;
-    line-height: 1;
+    color: #4caf50; font-size: 14px; font-weight: bold; line-height: 1;
   }
 
-  /* Interrupted dot — 8px red */
   .interrupted-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #ef5350;
+    width: 8px; height: 8px; border-radius: 50%; background: #ef5350;
   }
 
-  /* Count label next to indicator */
-  .count {
-    font-size: 10px;
-    font-weight: 600;
-    margin-left: 2px;
-  }
+  .count { font-size: 10px; font-weight: 600; margin-left: 2px; }
   .count.working { color: #ffa726; }
   .count.waiting { color: #ffa726; }
   .count.completed { color: #4caf50; }
@@ -160,6 +143,23 @@
   </div>
 
   <script>
+    // Apply notch-aware layout as soon as Tauri bridge is ready
+    async function applyDisplayInfo() {
+      if (!window.__TAURI__) return;
+      try {
+        const info = await window.__TAURI__.core.invoke('get_display_info');
+        const root = document.documentElement;
+        if (info.hasNotch) {
+          root.style.setProperty('--top-inset', info.topInset + 'px');
+          root.style.setProperty('--notch-gap', (info.notchWidth + 8) + 'px');
+        } else {
+          root.style.setProperty('--top-inset', '0px');
+          root.style.setProperty('--notch-gap', '4px');
+        }
+      } catch (e) { /* non-fatal */ }
+    }
+    applyDisplayInfo();
+
     const GREETINGS = [
       "Hello!", "Hey!", "Namaste!", "Hola!", "Bonjour!",
       "Ciao!", "Hallo!", "Olá!", "Ahoj!", "Salut!",
@@ -196,25 +196,22 @@
     let isExpanded = false;
 
     document.body.addEventListener('mouseenter', () => {
-      // Cancel any pending shrink
+      // Cancel any pending collapse
       if (shrinkTimer) { clearTimeout(shrinkTimer); shrinkTimer = null; }
 
       if (!isExpanded) {
         isExpanded = true;
         pillEl.classList.add('expanded');
-        if (window.__TAURI__) window.__TAURI__.core.invoke('expand_notch');
       }
       hoverTimer = setTimeout(() => {
         if (window.__TAURI__) window.__TAURI__.core.invoke('show_panel');
-      }, 300);
+      }, 200);
     });
     document.body.addEventListener('mouseleave', () => {
       if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-      // Delay shrink to avoid flicker from resize-triggered mouseleave
       shrinkTimer = setTimeout(() => {
         isExpanded = false;
         pillEl.classList.remove('expanded');
-        if (window.__TAURI__) window.__TAURI__.core.invoke('shrink_notch');
         shrinkTimer = null;
       }, 400);
     });

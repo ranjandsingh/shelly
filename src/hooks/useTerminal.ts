@@ -3,6 +3,8 @@ import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { emitSessionInteraction } from "../lib/interactionBus";
+import { registerTerminalFocus } from "../lib/terminalFocus";
 import {
   createTerminal as createPty,
   writeInput,
@@ -31,14 +33,31 @@ export function useTerminal(
   const sessionExitedRef = useRef<boolean>(false);
   const lastWorkDirRef = useRef<string>("");
   const replayingRef = useRef<boolean>(false);
+  // Increments on every attachSession call. Any in-flight attach whose gen
+  // no longer matches aborts at the next await so StrictMode's double-mount
+  // (and any rapid tab switch) can't race two concurrent attaches.
+  const attachGenRef = useRef<number>(0);
+  // Last cols/rows we sent to Rust for the current session. Used to avoid
+  // spurious SIGWINCH events (bash's readline on same-size resize can wipe
+  // multi-line prompts down to just the last line).
+  const lastSentSizeRef = useRef<{ sid: string | null; cols: number; rows: number }>({
+    sid: null,
+    cols: 0,
+    rows: 0,
+  });
+  // True while the floating panel is mid-animation (pill growing or shrinking).
+  // We do NOT forward resizes during this phase because the pill container fits
+  // xterm to ~18x1, which would SIGWINCH the shell into a single-line redraw.
+  const panelAnimatingRef = useRef<boolean>(false);
 
-  // Initialize xterm once
+  // Initialize xterm once, but only after the container has real dimensions.
   useEffect(() => {
     if (!containerRef.current || termRef.current) return;
+    const container = containerRef.current;
 
     const term = new Terminal({
       theme: {
-        background: "#1a1a1a",
+        background: "rgba(0, 0, 0, 0)",
         foreground: "#e6e6e6",
         cursor: "#e6e6e6",
         selectionBackground: "#44475a",
@@ -47,23 +66,38 @@ export function useTerminal(
       fontSize: 11,
       cursorBlink: true,
       allowProposedApi: true,
+      allowTransparency: true,
     });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(containerRef.current);
-    fitAddon.fit();
 
+    // Stash refs immediately so attachSession can see them; open() is deferred.
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    let opened = false;
+    const tryOpen = () => {
+      if (opened) return;
+      if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+        term.open(container);
+        fitAddon.fit();
+        opened = true;
+        registerTerminalFocus(() => term.focus());
+        initObserver.disconnect();
+      }
+    };
+
+    const initObserver = new ResizeObserver(() => tryOpen());
+    initObserver.observe(container);
+    // Attempt immediately in case the container already has size.
+    tryOpen();
 
     // Handle input
     term.onData((data) => {
       if (!currentSessionRef.current) return;
-      // Suppress terminal responses (e.g. cursor position \x1b[row;colR) during buffer replay
       if (replayingRef.current) return;
 
-      // If process exited and user presses Enter, restart the terminal
       if (sessionExitedRef.current && (data === "\r" || data === "\n")) {
         sessionExitedRef.current = false;
         const sid = currentSessionRef.current;
@@ -72,7 +106,6 @@ export function useTerminal(
         fitAddon.fit();
         (async () => {
           try {
-            // Re-subscribe to output first
             if (unlistenRef.current) {
               unlistenRef.current();
               unlistenRef.current = null;
@@ -106,40 +139,72 @@ export function useTerminal(
       }
     });
 
-    // Handle resize (debounced)
-    const observer = new ResizeObserver(() => {
+    term.onKey(() => {
+      const sid = currentSessionRef.current;
+      if (sid) emitSessionInteraction(sid);
+    });
+
+    term.onScroll(() => {
+      const sid = currentSessionRef.current;
+      if (sid) emitSessionInteraction(sid);
+    });
+
+    // Only forward a resize to the PTY when cols/rows actually changed for
+    // the current session. Same-size resize still triggers SIGWINCH on the
+    // shell, which on MINGW bash redraws only the last line of a multi-line
+    // prompt (wiping the banner from view). Also skip while the panel is
+    // animating — mid-pill the container fits to ~18x1 which, if forwarded,
+    // causes bash to redraw the prompt to a single-line state.
+    const maybeResizePty = () => {
+      const sid = currentSessionRef.current;
+      if (!sid) return;
+      if (panelAnimatingRef.current) return;
+      const last = lastSentSizeRef.current;
+      if (last.sid === sid && last.cols === term.cols && last.rows === term.rows) return;
+      lastSentSizeRef.current = { sid, cols: term.cols, rows: term.rows };
+      resizeTerminal(sid, term.cols, term.rows);
+    };
+
+    // Debounced resize — only runs after xterm is open
+    const resizeObserver = new ResizeObserver(() => {
+      if (!opened) return;
       if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
       resizeTimerRef.current = window.setTimeout(() => {
         fitAddon.fit();
-        if (currentSessionRef.current) {
-          resizeTerminal(currentSessionRef.current, term.cols, term.rows);
-        }
+        maybeResizePty();
       }, 150);
     });
-    observer.observe(containerRef.current);
+    resizeObserver.observe(container);
 
-    // Re-fit terminal after panel animation completes
+    const mouseDownHandler = () => {
+      const sid = currentSessionRef.current;
+      if (sid) emitSessionInteraction(sid);
+    };
+    container.addEventListener("mousedown", mouseDownHandler);
+
+    // Re-fit + force-paint after panel animation ends
     let unlistenAnim: (() => void) | null = null;
     listen<boolean>("panel-animating", (e) => {
-      if (!e.payload) {
-        // Animation ended — re-fit with a small delay for layout to settle
+      if (e.payload) {
+        panelAnimatingRef.current = true;
+      } else {
         setTimeout(() => {
+          if (!opened) tryOpen();
           fitAddon.fit();
-          if (currentSessionRef.current) {
-            resizeTerminal(currentSessionRef.current, term.cols, term.rows);
-          }
+          try { term.refresh(0, term.rows - 1); } catch {}
+          // Clear the flag right before maybeResizePty so the post-animation
+          // fit can send a real resize if the final size genuinely changed.
+          panelAnimatingRef.current = false;
+          maybeResizePty();
         }, 50);
       }
     }).then((fn) => { unlistenAnim = fn as unknown as () => void; });
 
-    // Block xterm's native paste handler — we handle paste via the custom key handler below.
-    // Without this, both the native paste event and our Ctrl+V handler write to the PTY.
     term.textarea?.addEventListener("paste", (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
     }, { capture: true });
 
-    // Clipboard handling
     term.attachCustomKeyEventHandler((e) => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key === "v" && e.type === "keydown") {
@@ -161,8 +226,11 @@ export function useTerminal(
     });
 
     return () => {
-      observer.disconnect();
+      initObserver.disconnect();
+      resizeObserver.disconnect();
+      container.removeEventListener("mousedown", mouseDownHandler);
       unlistenAnim?.();
+      registerTerminalFocus(null);
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;
@@ -181,13 +249,12 @@ export function useTerminal(
   // Attach to session
   const attachSession = useCallback(
     async (newSessionId: string, workDir: string) => {
-      console.log(`[useTerminal] attachSession: ${newSessionId}, workDir=${workDir}`);
+      const gen = ++attachGenRef.current;
+      const isStale = () => gen !== attachGenRef.current;
+
       const term = termRef.current;
       const fitAddon = fitAddonRef.current;
-      if (!term || !fitAddon) {
-        console.warn("[useTerminal] attachSession: term or fitAddon not ready");
-        return;
-      }
+      if (!term || !fitAddon) return;
 
       // Cleanup previous listeners
       if (unlistenRef.current) {
@@ -204,57 +271,73 @@ export function useTerminal(
       lastWorkDirRef.current = workDir;
 
       const exists = await checkHasTerminal(newSessionId);
-      console.log(`[useTerminal] hasTerminal=${exists}`);
+      if (isStale()) return;
 
-      if (exists) {
-        // Existing terminal: replay buffer
-        await suppressLiveOutput(newSessionId, true);
-        replayingRef.current = true;
-        term.reset();
-        fitAddon.fit();
-
-        const b64 = await getBufferedOutput(newSessionId);
-        if (b64) {
-          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-          term.write(bytes);
-        }
-        // Allow xterm to finish processing before re-enabling input
-        await new Promise((r) => setTimeout(r, 50));
-        replayingRef.current = false;
-
-        // Subscribe to live output
-        unlistenRef.current = (await onTerminalOutput(
-          (event: TerminalOutputEvent) => {
-            if (event.sessionId === newSessionId) {
-              const bytes = Uint8Array.from(atob(event.data), (c) =>
-                c.charCodeAt(0)
-              );
-              term.write(bytes);
-            }
-          }
-        )) as unknown as () => void;
-
-        await suppressLiveOutput(newSessionId, false);
-      } else {
-        // New terminal
-        term.reset();
-        fitAddon.fit();
-
-        // Subscribe to live output first
-        unlistenRef.current = (await onTerminalOutput(
-          (event: TerminalOutputEvent) => {
-            if (event.sessionId === newSessionId) {
-              const bytes = Uint8Array.from(atob(event.data), (c) =>
-                c.charCodeAt(0)
-              );
-              term.write(bytes);
-            }
-          }
-        )) as unknown as () => void;
-
-        // Create PTY at current xterm size (shell starts in workDir via cmd.cwd)
+      // For a fresh session, spawn the PTY first. Its output accumulates in the
+      // Rust-side buffer (pty.rs tracks last_emitted), so nothing is lost even
+      // if the shell prints its banner before we finish wiring listeners.
+      if (!exists) {
         await createPty(newSessionId, workDir, term.cols, term.rows);
+        if (isStale()) return;
+        // PTY was born at exactly these dimensions; seed the dedup cache so
+        // the first resize observer fire doesn't re-send the same size and
+        // trigger a SIGWINCH-driven prompt redraw.
+        lastSentSizeRef.current = { sid: newSessionId, cols: term.cols, rows: term.rows };
+      } else if (lastSentSizeRef.current.sid !== newSessionId) {
+        // Attaching to a PTY we already created earlier in this session.
+        // Assume it's still at the last size we sent for it; if not, the
+        // observer will correct the drift on the next container resize.
+        lastSentSizeRef.current = { sid: newSessionId, cols: term.cols, rows: term.rows };
+      }
 
+      // Pause live emits while we attach. Anything accumulating in output_buffer
+      // during this window is replayed when we flip suppress back off.
+      await suppressLiveOutput(newSessionId, true);
+      if (isStale()) return;
+
+      // Only suppress xterm's onData (CPR responses etc.) while replaying OLD
+      // buffered data. For a fresh PTY the "buffered" bytes are live — the
+      // shell is actively blocked on read() waiting for the CPR answer, so
+      // the response has to flow back.
+      replayingRef.current = exists;
+      term.reset();
+      if (term.element) fitAddon.fit();
+
+      // Register the live listener now (still suppressed — no events flow yet).
+      const liveUnlisten = (await onTerminalOutput(
+        (event: TerminalOutputEvent) => {
+          if (event.sessionId === newSessionId) {
+            const bytes = Uint8Array.from(atob(event.data), (c) =>
+              c.charCodeAt(0)
+            );
+            term.write(bytes);
+          }
+        }
+      )) as unknown as () => void;
+      if (isStale()) {
+        liveUnlisten();
+        return;
+      }
+      unlistenRef.current = liveUnlisten;
+
+      // Pull everything emitted so far. get_buffered_output advances
+      // last_emitted so future live events carry only the delta.
+      const b64 = await getBufferedOutput(newSessionId);
+      if (isStale()) return;
+      if (b64) {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        term.write(bytes);
+      }
+      await new Promise((r) => setTimeout(r, 50));
+      if (isStale()) return;
+      if (exists) replayingRef.current = false;
+
+      // Flip suppression off. The backend emits any delta that accumulated
+      // between the fetch above and now, then live emits resume.
+      await suppressLiveOutput(newSessionId, false);
+      if (isStale()) return;
+
+      if (!exists && workDir) {
         // After shell prompt appears, optionally auto-launch claude
         setTimeout(async () => {
           try {
@@ -266,7 +349,7 @@ export function useTerminal(
       }
 
       // Listen for process exit
-      unlistenExitRef.current = (await listen<string>(
+      const exitUnlisten = (await listen<string>(
         "process-exited",
         (event) => {
           if (event.payload === newSessionId && termRef.current) {
@@ -277,6 +360,8 @@ export function useTerminal(
           }
         }
       )) as unknown as () => void;
+      if (isStale()) { exitUnlisten(); return; }
+      unlistenExitRef.current = exitUnlisten;
 
       term.focus();
 

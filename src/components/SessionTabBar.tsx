@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalSession } from "../hooks/useSessionStore";
 import { SettingsMenu } from "./SettingsMenu";
@@ -11,14 +11,29 @@ interface SessionTabBarProps {
   onClose: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onRefresh: () => void;
-  currentTheme: string;
-  currentFontSize: number;
-  onThemeChange: (themeId: string) => void;
-  onFontSizeChange: (size: number) => void;
+  hotkey: string;
+  onOpenHotkeyModal: () => void;
+  onOpenThemesModal: () => void;
 }
 
-const HINTS = [
-  "Ctrl+` to toggle panel",
+const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
+
+function prettyHotkey(accel: string): string {
+  const parts = accel.split("+").map((p) => p.trim());
+  const out: string[] = [];
+  for (const p of parts) {
+    const lower = p.toLowerCase();
+    if (lower === "cmdorctrl") out.push(IS_MAC ? "\u2318" : "Ctrl");
+    else if (lower === "ctrl" || lower === "control") out.push(IS_MAC ? "\u2303" : "Ctrl");
+    else if (lower === "alt" || lower === "option") out.push(IS_MAC ? "\u2325" : "Alt");
+    else if (lower === "shift") out.push(IS_MAC ? "\u21E7" : "Shift");
+    else if (lower === "cmd" || lower === "command" || lower === "meta" || lower === "super") out.push(IS_MAC ? "\u2318" : "Win");
+    else out.push(p);
+  }
+  return out.join(IS_MAC ? "" : "+");
+}
+
+const BASE_HINTS = [
   "Drop a folder to open it",
   "Right-click tab to rename",
   "Pin to keep panel open",
@@ -44,11 +59,14 @@ export function SessionTabBar({
   onClose,
   onRename,
   onRefresh,
-  currentTheme,
-  currentFontSize,
-  onThemeChange,
-  onFontSizeChange,
+  hotkey,
+  onOpenHotkeyModal,
+  onOpenThemesModal,
 }: SessionTabBarProps) {
+  const hints = useMemo(
+    () => [`${prettyHotkey(hotkey)} to toggle panel`, ...BASE_HINTS],
+    [hotkey]
+  );
   const [isPinned, setIsPinned] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
@@ -66,13 +84,13 @@ export function SessionTabBar({
     return () => { unlisten?.(); };
   }, []);
   const [showHints, setShowHints] = useState(true);
-  const [hint, setHint] = useState(() => HINTS[Math.floor(Math.random() * HINTS.length)]);
+  const [hintIdxState, setHintIdxState] = useState(() => Math.floor(Math.random() * hints.length));
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const hintIdx = useRef(Math.floor(Math.random() * HINTS.length));
+  const hint = hints[hintIdxState % hints.length];
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
@@ -95,11 +113,10 @@ export function SessionTabBar({
   useEffect(() => {
     if (!showHints) return;
     const id = setInterval(() => {
-      hintIdx.current = (hintIdx.current + 1) % HINTS.length;
-      setHint(HINTS[hintIdx.current]);
+      setHintIdxState((i) => (i + 1) % hints.length);
     }, 12000);
     return () => clearInterval(id);
-  }, [showHints]);
+  }, [showHints, hints.length]);
 
   // --- Close menu on outside click ---
   useEffect(() => {
@@ -253,12 +270,10 @@ export function SessionTabBar({
         {showMenu && (
           <SettingsMenu
             onClose={() => setShowMenu(false)}
-            onThemeChange={onThemeChange}
-            onFontSizeChange={onFontSizeChange}
-            currentTheme={currentTheme}
-            currentFontSize={currentFontSize}
             showHints={showHints}
             onToggleHints={() => setShowHints(!showHints)}
+            onOpenHotkeyModal={onOpenHotkeyModal}
+            onOpenThemesModal={onOpenThemesModal}
           />
         )}
       </div>

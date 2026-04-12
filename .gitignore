@@ -33,6 +33,9 @@ publish/
 ## Claude Code
 .claude/settings.local.json
 
+## Superpowers workflow artifacts (specs and plans — kept local only)
+docs/superpowers/
+
 ## Legacy .NET (kept in shelly-legacy/)
 shelly-legacy/bin/
 shelly-legacy/obj/
