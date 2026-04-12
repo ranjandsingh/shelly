@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { TerminalView } from "./components/TerminalView";
 import { SessionTabBar } from "./components/SessionTabBar";
 import { useSessionStore } from "./hooks/useSessionStore";
+import { useAttention } from "./hooks/useAttention";
 import { listen } from "@tauri-apps/api/event";
 import { DragBar } from "./components/DragBar";
 import { THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
@@ -17,6 +18,13 @@ function App() {
     renameSession,
     refresh,
   } = useSessionStore();
+
+  const sessionExists = useCallback(
+    (id: string) => sessions.some((s) => s.id === id),
+    [sessions]
+  );
+
+  useAttention(activeSessionId, selectSession, sessionExists);
 
   const [currentTheme, setCurrentTheme] = useState("vs-dark");
   const [fontSize, setFontSize] = useState(11);

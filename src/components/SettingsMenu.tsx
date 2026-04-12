@@ -73,6 +73,15 @@ interface AppSettings {
   notchAtBottom: boolean;
 }
 
+interface AttentionSettings {
+  enabled: boolean;
+  triggerStatuses: string[];
+  stealFocus: boolean;
+  autoHideTimeoutMs: number;
+}
+
+const ALL_TRIGGER_STATUSES: string[] = ["TaskCompleted", "WaitingForInput", "Interrupted"];
+
 export function SettingsMenu({
   onClose,
   onThemeChange,
@@ -86,6 +95,7 @@ export function SettingsMenu({
   const [shells, setShells] = useState<ShellInfo[]>([]);
   const [currentShell, setCurrentShell] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [attention, setAttention] = useState<AttentionSettings | null>(null);
   const [hotkey, setHotkeyState] = useState<string>("CmdOrCtrl+`");
   const [captureMods, setCaptureMods] = useState<{ ctrl: boolean; alt: boolean; shift: boolean; cmd: boolean }>({ ctrl: false, alt: false, shift: false, cmd: false });
   const [captureKey, setCaptureKey] = useState<string>("");
@@ -96,6 +106,7 @@ export function SettingsMenu({
     invoke<string>("get_default_shell").then(setCurrentShell);
     invoke<AppSettings>("get_settings").then(setSettings);
     invoke<string>("get_hotkey").then(setHotkeyState);
+    invoke<AttentionSettings>("get_attention_settings").then(setAttention);
   }, []);
 
   const updateSetting = async (key: string, value: any) => {
@@ -103,6 +114,15 @@ export function SettingsMenu({
     const updated = { ...settings, [key]: value };
     setSettings(updated);
     await invoke("save_app_settings", { newSettings: updated });
+  };
+
+  const updateAttention = async (patch: Partial<AttentionSettings>) => {
+    if (!attention) return;
+    const updated = { ...attention, ...patch };
+    if (updated.autoHideTimeoutMs < 1000) updated.autoHideTimeoutMs = 1000;
+    if (updated.autoHideTimeoutMs > 30000) updated.autoHideTimeoutMs = 30000;
+    setAttention(updated);
+    await invoke("set_attention_settings", { newAttention: updated });
   };
 
   const setShell = async (path: string) => {
@@ -303,6 +323,68 @@ export function SettingsMenu({
     );
   }
 
+  if (subMenu === "attention") {
+    if (!attention) return null;
+    const toggleStatus = (st: string) => {
+      const set = new Set(attention.triggerStatuses);
+      if (set.has(st)) set.delete(st);
+      else set.add(st);
+      updateAttention({ triggerStatuses: Array.from(set) });
+    };
+    return (
+      <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
+        <div className="menu-item back" onClick={() => setSubMenu(null)}>
+          &#x2190; Attention
+        </div>
+        <div className="menu-separator" />
+        <div
+          className={`menu-item toggle ${attention.enabled ? "on" : ""}`}
+          onClick={() => updateAttention({ enabled: !attention.enabled })}
+        >
+          Auto-show on status
+          <span className="toggle-indicator">{attention.enabled ? "ON" : "OFF"}</span>
+        </div>
+        <div
+          className={`menu-item toggle ${attention.stealFocus ? "on" : ""}`}
+          onClick={() => updateAttention({ stealFocus: !attention.stealFocus })}
+        >
+          Steal focus
+          <span className="toggle-indicator">{attention.stealFocus ? "ON" : "OFF"}</span>
+        </div>
+        <div className="menu-separator" />
+        {ALL_TRIGGER_STATUSES.map((st) => {
+          const active = attention.triggerStatuses.includes(st);
+          return (
+            <div
+              key={st}
+              className={`menu-item ${active ? "checked" : ""}`}
+              onClick={() => toggleStatus(st)}
+            >
+              {active && <span className="check">&#x2713;</span>}
+              {st}
+            </div>
+          );
+        })}
+        <div className="menu-separator" />
+        <div className="menu-item" style={{ gap: 8 }}>
+          Auto-hide (ms)
+          <input
+            type="number"
+            min={1000}
+            max={30000}
+            step={500}
+            value={attention.autoHideTimeoutMs}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10);
+              if (!Number.isNaN(v)) updateAttention({ autoHideTimeoutMs: v });
+            }}
+            style={{ width: 80, marginLeft: "auto" }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
       <div className="menu-item" onClick={handleCollapse}>
@@ -334,6 +416,10 @@ export function SettingsMenu({
       >
         Trigger Shortcut
         <span className="menu-value">{prettyAccelerator(hotkey)}</span>
+      </div>
+      <div className="menu-item arrow" onClick={() => setSubMenu("attention")}>
+        Attention
+        <span className="menu-value">{attention?.enabled ? "ON" : "OFF"}</span>
       </div>
       {settings && (
         <>
