@@ -4,6 +4,7 @@ import { monokai } from "./monokai";
 import { dracula } from "./dracula";
 import { solarizedDark } from "./solarized-dark";
 import { oneDark } from "./one-dark";
+import { blueberryBanana } from "./blueberry-banana";
 import { vsLight } from "./vs-light";
 
 export const BUILTIN_THEMES: Record<string, Theme> = {
@@ -12,5 +13,6 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
   "dracula": dracula,
   "solarized-dark": solarizedDark,
   "one-dark": oneDark,
+  "blueberry-banana": blueberryBanana,
   "vs-light": vsLight,
 };
