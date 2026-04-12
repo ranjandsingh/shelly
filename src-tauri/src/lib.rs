@@ -33,6 +33,7 @@ struct AppState {
     has_shown_once: Mutex<bool>,
     animating: Mutex<bool>,
     panel_size: Mutex<(f64, f64)>,
+    display_info: Mutex<display_info::DisplayInfo>,
 }
 
 const PANEL_W: f64 = 720.0;
@@ -66,6 +67,12 @@ fn get_panel_size(app: &AppHandle) -> (f64, f64) {
         .unwrap_or((PANEL_W, PANEL_H))
 }
 
+fn get_top_inset(app: &AppHandle) -> f64 {
+    app.try_state::<AppState>()
+        .map(|s| safe_lock(&s.display_info).top_inset)
+        .unwrap_or(0.0)
+}
+
 fn do_show_panel(app: &AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if main_win.is_visible().unwrap_or(false) { return; }
@@ -82,7 +89,7 @@ fn do_show_panel(app: &AppHandle) {
         // Start from pill-like shape: small, centered at top
         let start_w = 140.0_f64;
         let start_h = 38.0_f64;
-        let start_y: f64 = 0.0;
+        let start_y: f64 = get_top_inset(app);
 
         // Hide notch so it doesn't overlap with panel animation
         if let Some(notch) = app.get_webview_window("notch") {
@@ -139,7 +146,7 @@ fn do_show_panel(app: &AppHandle) {
             // Snap to final
             if let Some(win) = handle.get_webview_window("main") {
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
-                let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, target_w), 0));
+                let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, target_w), start_y as i32));
             }
             let _ = handle.emit("panel-animating", false);
             set_animating(&handle, false);
@@ -159,6 +166,7 @@ fn do_hide_panel(app: &AppHandle) {
 
         let handle = app.clone();
         std::thread::spawn(move || {
+            let top_y = get_top_inset(&handle);
             let steps: u64 = 12;
             let total_ms: u64 = 180;
             let sw = get_screen_width(&handle);
@@ -176,7 +184,7 @@ fn do_hide_panel(app: &AppHandle) {
 
                 if let Some(win) = handle.get_webview_window("main") {
                     let _ = win.set_size(tauri::LogicalSize::new(w, h));
-                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), 0));
+                    let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), top_y as i32));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
             }
@@ -579,7 +587,7 @@ fn shrink_notch(app: AppHandle) {
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
             let x = ((sw - w) / 2.0) as i32;
-            let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+            let _ = notch.set_position(tauri::LogicalPosition::new(x, get_top_inset(&app) as i32));
         }
     }
 }
@@ -595,7 +603,7 @@ fn expand_notch(app: AppHandle) {
         if let Ok(Some(monitor)) = app.primary_monitor() {
             let sw = monitor.size().width as f64 / monitor.scale_factor();
             let x = ((sw - w) / 2.0) as i32;
-            let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+            let _ = notch.set_position(tauri::LogicalPosition::new(x, get_top_inset(&app) as i32));
         }
     }
 }
@@ -606,9 +614,14 @@ fn position_panel_center(app: AppHandle) {
         let sw = get_screen_width(&app);
         let (w, _) = get_panel_size(&app);
         let x = center_x(sw, w);
-        let _ = main_win.set_position(tauri::LogicalPosition::new(x, 0));
-        log::info!("CMD position_panel_center: x={x}, y=0");
+        let _ = main_win.set_position(tauri::LogicalPosition::new(x, get_top_inset(&app) as i32));
+        log::info!("CMD position_panel_center: x={x}");
     }
+}
+
+#[tauri::command]
+fn get_display_info(state: State<'_, AppState>) -> display_info::DisplayInfo {
+    safe_lock(&state.display_info).clone()
 }
 
 // --- Shell commands ---
@@ -661,6 +674,7 @@ pub fn run() {
             has_shown_once: Mutex::new(false),
             animating: Mutex::new(false),
             panel_size: Mutex::new((PANEL_W, PANEL_H)),
+            display_info: Mutex::new(display_info::DisplayInfo::default()),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -682,6 +696,13 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             log::info!("SETUP: tray initialized");
 
+            // Detect display (notch / top inset)
+            let info = display_info::detect();
+            log::info!("SETUP: display_info = {info:?}");
+            if let Some(state) = app.try_state::<AppState>() {
+                *safe_lock(&state.display_info) = info;
+            }
+
             // Position notch window at top-center of screen (greeting size: 140x46)
             if let Some(notch) = app.get_webview_window("notch") {
                 log::info!("SETUP: positioning notch window...");
@@ -690,7 +711,7 @@ pub fn run() {
                     if let Some(monitor) = handle.primary_monitor().ok().flatten() {
                         let screen_width = monitor.size().width as f64 / monitor.scale_factor();
                         let x = ((screen_width - 140.0) / 2.0) as i32;
-                        let _ = notch.set_position(tauri::LogicalPosition::new(x, 0));
+                        let _ = notch.set_position(tauri::LogicalPosition::new(x, get_top_inset(&handle) as i32));
                         log::info!("SETUP: notch positioned at x={x}");
                     }
                     let _ = notch.show();
@@ -850,6 +871,7 @@ pub fn run() {
             set_default_shell,
             get_hotkey,
             set_hotkey,
+            get_display_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
