@@ -296,10 +296,28 @@ export const THEMES: Record<string, Theme> = {
   },
 };
 
-export function applyThemeToCSS(theme: Theme) {
+export function hexToRgba(color: string, alpha: number): string {
+  if (!color.startsWith("#") || (color.length !== 7 && color.length !== 4)) {
+    return color;
+  }
+  let r: number, g: number, b: number;
+  if (color.length === 4) {
+    r = parseInt(color[1] + color[1], 16);
+    g = parseInt(color[2] + color[2], 16);
+    b = parseInt(color[3] + color[3], 16);
+  } else {
+    r = parseInt(color.slice(1, 3), 16);
+    g = parseInt(color.slice(3, 5), 16);
+    b = parseInt(color.slice(5, 7), 16);
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function applyThemeToCSS(theme: Theme, opacity: number = 1, fadeContent: boolean = false) {
   const root = document.documentElement;
   const c = theme.chrome;
-  root.style.setProperty("--panel-bg", c.panelBg);
+  const panelBg = opacity >= 1 ? c.panelBg : hexToRgba(c.panelBg, opacity);
+  root.style.setProperty("--panel-bg", panelBg);
   root.style.setProperty("--tab-bar-bg", c.tabBarBg);
   root.style.setProperty("--tab-active-bg", c.tabActiveBg);
   root.style.setProperty("--tab-hover-bg", c.tabHoverBg);
@@ -315,6 +333,7 @@ export function applyThemeToCSS(theme: Theme) {
   root.style.setProperty("--menu-hover", c.menuHover);
   root.style.setProperty("--hint-text", c.hintText);
   root.style.setProperty("--terminal-bg", theme.terminal.background);
+  root.style.setProperty("--content-opacity", fadeContent ? String(opacity) : "1");
 }
 
 export function getTerminalTheme(theme: Theme) {
