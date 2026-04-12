@@ -7,7 +7,7 @@ import { useAttention } from "./hooks/useAttention";
 import { listen } from "@tauri-apps/api/event";
 import { DragBar } from "./components/DragBar";
 import { HotkeyCaptureModal } from "./components/HotkeyCaptureModal";
-import { THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
+import { BUILTIN_THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
 import "./App.css";
 
 function App() {
@@ -40,20 +40,20 @@ function App() {
   );
 
   const terminalTheme = useMemo(
-    () => getTerminalTheme(THEMES[currentTheme] || THEMES["vs-dark"]),
+    () => getTerminalTheme(BUILTIN_THEMES[currentTheme] || BUILTIN_THEMES["vs-dark"]),
     [currentTheme]
   );
 
   // Apply chrome theme on change
   useEffect(() => {
-    const theme = THEMES[currentTheme] || THEMES["vs-dark"];
+    const theme = BUILTIN_THEMES[currentTheme] || BUILTIN_THEMES["vs-dark"];
     applyThemeToCSS(theme);
   }, [currentTheme]);
 
   // Load saved theme from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("shelly-theme");
-    if (saved && THEMES[saved]) setCurrentTheme(saved);
+    if (saved && BUILTIN_THEMES[saved]) setCurrentTheme(saved);
     const savedSize = localStorage.getItem("shelly-font-size");
     if (savedSize) setFontSize(parseInt(savedSize, 10));
     invoke<string>("get_hotkey").then(setHotkey).catch(() => {});

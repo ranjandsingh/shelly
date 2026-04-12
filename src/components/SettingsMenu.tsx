@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { THEMES } from "../lib/themes";
+import { BUILTIN_THEMES } from "../lib/themes";
 
 const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
 
@@ -211,7 +211,7 @@ export function SettingsMenu({
           &#x2190; Theme
         </div>
         <div className="menu-separator" />
-        {Object.entries(THEMES).map(([id, theme]) => (
+        {Object.entries(BUILTIN_THEMES).map(([id, theme]) => (
           <div
             key={id}
             className={`menu-item ${currentTheme === id ? "checked" : ""}`}
@@ -298,7 +298,7 @@ export function SettingsMenu({
       </div>
       <div className="menu-item arrow" onClick={() => setSubMenu("theme")}>
         Theme
-        <span className="menu-value">{THEMES[currentTheme]?.name}</span>
+        <span className="menu-value">{BUILTIN_THEMES[currentTheme]?.name}</span>
       </div>
       <div className="menu-item arrow" onClick={() => setSubMenu("fontSize")}>
         Text Size
