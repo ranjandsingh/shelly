@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { TerminalSession } from "../hooks/useSessionStore";
 import { SettingsMenu } from "./SettingsMenu";
 import { RecentFoldersDropdown } from "./RecentFoldersDropdown";
+import { resolveTabColor } from "../lib/tabColor";
+import { getPathColors } from "../lib/ipc";
 
 interface SessionTabBarProps {
   sessions: TerminalSession[];
@@ -93,6 +95,7 @@ export function SessionTabBar({
   const [renameValue, setRenameValue] = useState("");
   const hint = hints[hintIdxState % hints.length];
   const [recentOpen, setRecentOpen] = useState(false);
+  const [pathColors, setPathColors] = useState<Record<string, string>>({});
   const recentBtnRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -148,6 +151,38 @@ export function SessionTabBar({
       renameInputRef.current.select();
     }
   }, [renamingId]);
+
+  // --- Load path colors + subscribe to updates ---
+  useEffect(() => {
+    getPathColors().then(setPathColors);
+    let un: (() => void) | null = null;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      listen("path-colors-updated", async () => {
+        setPathColors(await getPathColors());
+      }).then(fn => { un = fn; });
+    });
+    return () => { un?.(); };
+  }, []);
+
+  const cwdCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of sessions) {
+      const cwd = s.workingDirectory;
+      if (!cwd) continue;
+      m.set(cwd, (m.get(cwd) ?? 0) + 1);
+    }
+    return m;
+  }, [sessions]);
+
+  const openPaths = useMemo(
+    () => new Set(Array.from(cwdCounts.keys())),
+    [cwdCounts],
+  );
+
+  const colorForPath = useCallback(
+    (p: string) => resolveTabColor(p, cwdCounts.get(p) ?? 0, pathColors),
+    [cwdCounts, pathColors],
+  );
 
   const handleContextMenu = (e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
@@ -273,6 +308,8 @@ export function SessionTabBar({
           open={recentOpen}
           onClose={() => setRecentOpen(false)}
           onOpened={onRefresh}
+          openPaths={openPaths}
+          colorForPath={colorForPath}
         />
       </div>
       <button className={`tabbar-btn pin-btn ${isPinned ? "on" : ""}`} onClick={async () => { const n = !isPinned; setIsPinned(n); await invoke("set_pinned", { pinned: n }); }} title={isPinned ? "Unpin" : "Pin"}>

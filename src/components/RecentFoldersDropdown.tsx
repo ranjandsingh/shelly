@@ -10,6 +10,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onOpened?: () => void;
+  openPaths: Set<string>;
+  colorForPath: (p: string) => string | null;
 };
 
 function basename(p: string): string {
@@ -18,7 +20,7 @@ function basename(p: string): string {
   return i >= 0 ? norm.slice(i + 1) : norm;
 }
 
-export function RecentFoldersDropdown({ open, onClose, onOpened }: Props) {
+export function RecentFoldersDropdown({ open, onClose, onOpened, openPaths, colorForPath }: Props) {
   const [items, setItems] = useState<string[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -50,20 +52,30 @@ export function RecentFoldersDropdown({ open, onClose, onOpened }: Props) {
       ) : (
         <>
           <div className="recent-dropdown-list">
-            {items.map(path => (
-              <button
-                key={path}
-                className="recent-item"
-                title={path}
-                onClick={async () => {
-                  await openRecentFolder(path);
-                  onOpened?.();
-                  onClose();
-                }}
-              >
-                <span className="recent-item-name">{basename(path)}</span>
-              </button>
-            ))}
+            {items.map(path => {
+              const isOpen = openPaths.has(path);
+              const color = colorForPath(path);
+              return (
+                <button
+                  key={path}
+                  className={`recent-item${isOpen ? " open" : ""}`}
+                  title={path}
+                  onClick={async () => {
+                    await openRecentFolder(path);
+                    onOpened?.();
+                    onClose();
+                  }}
+                >
+                  {isOpen && (
+                    <span
+                      className="recent-item-dot"
+                      style={{ background: color ?? "#4caf50" }}
+                    />
+                  )}
+                  <span className="recent-item-name">{basename(path)}</span>
+                </button>
+              );
+            })}
           </div>
           <div className="recent-dropdown-footer">
             <button
