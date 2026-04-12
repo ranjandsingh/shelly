@@ -68,11 +68,38 @@ export function adjustL(color: string, delta: number): string {
 /** Strip line comments and block comments from JSONC, then parse. */
 function parseJsonc(text: string): any {
   try { return JSON.parse(text); } catch {}
-  const stripped = text
-    .replace(/\/\/[^\n\r]*/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/,\s*([}\]])/g, "$1");
-  return JSON.parse(stripped);
+  // Strip line and block comments while respecting string literals.
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      out += ch;
+      i++;
+      while (i < text.length) {
+        const c = text[i];
+        out += c;
+        i++;
+        if (c === "\\" && i < text.length) { out += text[i]; i++; continue; }
+        if (c === '"') break;
+      }
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n" && text[i] !== "\r") i++;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  const cleaned = out.replace(/,\s*([}\]])/g, "$1");
+  return JSON.parse(cleaned);
 }
 
 const SYNTAX_MAP: Record<string, string[]> = {
