@@ -553,6 +553,68 @@ fn save_app_settings(new_settings: settings::AppSettings, state: State<'_, AppSt
     *safe_lock(&state.settings) = new_settings;
 }
 
+#[tauri::command]
+fn get_recent_folders(state: State<'_, AppState>) -> Vec<String> {
+    safe_lock(&state.settings).recent_folders.clone()
+}
+
+#[tauri::command]
+fn clear_recent_folders(state: State<'_, AppState>, app: AppHandle) {
+    {
+        let mut s = safe_lock(&state.settings);
+        s.recent_folders.clear();
+        settings::save_settings(&s);
+    }
+    let _ = app.emit("recent-folders-updated", ());
+}
+
+#[tauri::command]
+fn open_recent_folder(
+    path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<session_store::TerminalSession, String> {
+    let folder_name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    let session = state.session_store.add_session(
+        Some(folder_name),
+        Some(path.clone()),
+        Some(path.clone()),
+    );
+    state.session_store.select_session(&session.id);
+    record_recent(&state, &app, &path);
+    do_show_panel(&app);
+    let _ = app.emit("sessions-force-refresh", ());
+    Ok(session)
+}
+
+#[tauri::command]
+fn get_path_colors(state: State<'_, AppState>) -> std::collections::HashMap<String, String> {
+    safe_lock(&state.settings).path_colors.clone()
+}
+
+#[tauri::command]
+fn set_path_color(
+    path: String,
+    color: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) {
+    let norm = settings::canonicalize_path(&path);
+    {
+        let mut s = safe_lock(&state.settings);
+        if color == "auto" || color.is_empty() {
+            s.path_colors.remove(&norm);
+        } else {
+            s.path_colors.insert(norm, color);
+        }
+        settings::save_settings(&s);
+    }
+    let _ = app.emit("path-colors-updated", ());
+}
+
 // --- Auto-start commands ---
 
 #[tauri::command]
@@ -1013,6 +1075,11 @@ pub fn run() {
             get_imported_themes,
             save_imported_theme,
             delete_imported_theme,
+            get_recent_folders,
+            clear_recent_folders,
+            open_recent_folder,
+            get_path_colors,
+            set_path_color,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
