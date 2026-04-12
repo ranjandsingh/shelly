@@ -795,6 +795,20 @@ pub fn run() {
                 });
             }
 
+            // Pre-warm main window so first user-triggered show finds a hot webview.
+            if let Some(main_win) = app.get_webview_window("main") {
+                let (target_w, target_h) = (PANEL_W, PANEL_H);
+                tauri::async_runtime::spawn(async move {
+                    // Offscreen position far from the visible area
+                    let _ = main_win.set_size(tauri::LogicalSize::new(target_w, target_h));
+                    let _ = main_win.set_position(tauri::LogicalPosition::new(-4000, -4000));
+                    let _ = main_win.show();
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    let _ = main_win.hide();
+                    log::info!("SETUP: main window pre-warmed");
+                });
+            }
+
             // Register trigger hotkey from settings
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             let hotkey_str = app.try_state::<AppState>()
