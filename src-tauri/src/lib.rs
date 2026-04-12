@@ -251,7 +251,7 @@ fn send_startup_command(
 
     if should_launch_claude {
         log::info!("CMD send_startup_command: session={session_id}, launching claude");
-        state.pty_manager.write_input(id, b"claude\r\n")
+        state.pty_manager.write_input(id, b"claude --continue\r\n")
     } else {
         log::info!("CMD send_startup_command: session={session_id}, no auto-launch needed");
         Ok(())
