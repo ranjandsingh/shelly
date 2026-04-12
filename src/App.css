@@ -840,3 +840,39 @@ html, body, #root {
 }
 .recent-clear:hover { background: var(--tab-hover-bg, rgba(255,255,255,0.06)); }
 
+.ctx-section-label {
+  font-size: 11px;
+  opacity: 0.6;
+  padding: 6px 10px 2px;
+}
+.ctx-color-palette {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 4px 10px 8px;
+}
+.ctx-swatch {
+  width: 20px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #3a3a3a;
+  padding: 0;
+}
+.ctx-swatch.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.ctx-swatch.auto {
+  background: linear-gradient(135deg, #ef4444 0%, #3b82f6 100%);
+}
+.ctx-swatch.none {
+  background: #333;
+}
+

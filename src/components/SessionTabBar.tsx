@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { TerminalSession } from "../hooks/useSessionStore";
 import { SettingsMenu } from "./SettingsMenu";
 import { RecentFoldersDropdown } from "./RecentFoldersDropdown";
-import { resolveTabColor } from "../lib/tabColor";
-import { getPathColors } from "../lib/ipc";
+import { resolveTabColor, NAMED_COLORS, PALETTE_ORDER } from "../lib/tabColor";
+import { getPathColors, setPathColor } from "../lib/ipc";
 
 interface SessionTabBarProps {
   sessions: TerminalSession[];
@@ -284,6 +284,42 @@ export function SessionTabBar({
           <div className="menu-item" onClick={() => startRename(contextMenu.sessionId)}>
             Rename
           </div>
+          {(() => {
+            const sess = sessions.find(s => s.id === contextMenu.sessionId);
+            if (!sess) return null;
+            const cwd = sess.workingDirectory;
+            const currentOverride = pathColors[cwd] ?? "auto";
+            const apply = async (color: string) => {
+              await setPathColor(cwd, color);
+              setContextMenu(null);
+            };
+            return (
+              <>
+                <div className="ctx-section-label">Color</div>
+                <div className="ctx-color-palette">
+                  <button
+                    className={`ctx-swatch auto${currentOverride === "auto" ? " active" : ""}`}
+                    onClick={() => apply("auto")}
+                    title="Auto"
+                  >A</button>
+                  {PALETTE_ORDER.map(name => (
+                    <button
+                      key={name}
+                      className={`ctx-swatch${currentOverride === name ? " active" : ""}`}
+                      style={{ background: NAMED_COLORS[name] }}
+                      onClick={() => apply(name)}
+                      title={name}
+                    />
+                  ))}
+                  <button
+                    className={`ctx-swatch none${currentOverride === "none" ? " active" : ""}`}
+                    onClick={() => apply("none")}
+                    title="None"
+                  >∅</button>
+                </div>
+              </>
+            );
+          })()}
           {sessions.length > 1 && (
             <div className="menu-item danger" onClick={() => { onClose(contextMenu.sessionId); setContextMenu(null); }}>
               Close
