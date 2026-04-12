@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalView } from "./components/TerminalView";
 import { SessionTabBar } from "./components/SessionTabBar";
@@ -8,8 +8,10 @@ import { listen } from "@tauri-apps/api/event";
 import { DragBar } from "./components/DragBar";
 import { HotkeyCaptureModal } from "./components/HotkeyCaptureModal";
 import { ThemesModal } from "./components/ThemesModal";
+import { UpdateBanner, type UpdateBannerState } from "./components/UpdateBanner";
 import { useThemes } from "./hooks/useThemes";
 import { BUILTIN_THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
+import { checkForUpdate, downloadUpdate, restartApp } from "./lib/updater";
 import "./App.css";
 
 function App() {
@@ -38,6 +40,8 @@ function App() {
   const [panelOpacity, setPanelOpacity] = useState(1);
   const [panelFadeContent, setPanelFadeContent] = useState(false);
   const [themesModalOpen, setThemesModalOpen] = useState(false);
+  const [updateBanner, setUpdateBanner] = useState<UpdateBannerState | null>(null);
+  const updateInFlight = useRef(false);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
@@ -58,6 +62,38 @@ function App() {
     applyThemeToCSS(theme, panelOpacity, panelFadeContent);
   }, [allThemes, currentTheme, panelOpacity, panelFadeContent]);
 
+  const runUpdateCheck = useCallback(async (manual: boolean) => {
+    if (updateInFlight.current) return;
+    updateInFlight.current = true;
+    try {
+      if (manual) setUpdateBanner({ kind: "checking" });
+      const update = await checkForUpdate();
+      if (!update) {
+        if (manual) {
+          setUpdateBanner({ kind: "uptodate" });
+          setTimeout(() => setUpdateBanner((b) => (b?.kind === "uptodate" ? null : b)), 3000);
+        } else {
+          setUpdateBanner(null);
+        }
+        return;
+      }
+      setUpdateBanner({ kind: "downloading", version: update.version });
+      await downloadUpdate(update);
+      setUpdateBanner({ kind: "ready", version: update.version });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (manual) {
+        setUpdateBanner({ kind: "error", message });
+        setTimeout(() => setUpdateBanner((b) => (b?.kind === "error" ? null : b)), 5000);
+      } else {
+        console.error("auto update check failed:", err);
+        setUpdateBanner(null);
+      }
+    } finally {
+      updateInFlight.current = false;
+    }
+  }, []);
+
   // Load saved theme from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("shelly-theme");
@@ -69,12 +105,22 @@ function App() {
       theme?: string;
       panelOpacity?: number;
       panelFadeContent?: boolean;
+      autoCheckUpdates?: boolean;
     }>("get_settings").then((s) => {
       if (typeof s.theme === "string") setCurrentTheme(s.theme);
       if (typeof s.panelOpacity === "number") setPanelOpacity(s.panelOpacity);
       if (typeof s.panelFadeContent === "boolean") setPanelFadeContent(s.panelFadeContent);
+      if (s.autoCheckUpdates !== false) {
+        runUpdateCheck(false);
+      }
     }).catch(() => {});
-  }, []);
+  }, [runUpdateCheck]);
+
+  // Tray "Check for Updates" menu item
+  useEffect(() => {
+    const unlisten = listen("tray-check-updates", () => { runUpdateCheck(true); });
+    return () => { unlisten.then((f) => f()); };
+  }, [runUpdateCheck]);
 
   const handleFontSizeChange = useCallback((size: number) => {
     setFontSize(size);
@@ -122,6 +168,13 @@ function App() {
   return (
     <div className={`floating-panel ${pillShape ? "panel-pill" : ""}`}>
       <DragBar />
+      {updateBanner && (
+        <UpdateBanner
+          state={updateBanner}
+          onRestart={restartApp}
+          onDismiss={() => setUpdateBanner(null)}
+        />
+      )}
       <SessionTabBar
         sessions={sessions}
         activeSessionId={activeSessionId}

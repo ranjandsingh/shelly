@@ -8,6 +8,7 @@
     "opener:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
-    "fs:allow-read-text-file"
+    "fs:allow-read-text-file",
+    "updater:default"
   ]
 }

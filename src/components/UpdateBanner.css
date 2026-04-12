@@ -1,0 +1,43 @@
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--tab-bar-bg);
+  color: var(--tab-active-text);
+}
+
+.update-banner-info { color: var(--tab-hover-text); }
+.update-banner-success { color: #8fd48f; }
+.update-banner-error { color: #e88; }
+
+.update-banner-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-banner-action {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.update-banner-action:hover { background: rgba(255,255,255,0.06); }
+
+.update-banner-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--tab-text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.update-banner-dismiss:hover { color: var(--tab-active-text); }

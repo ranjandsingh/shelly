@@ -6,10 +6,11 @@ use tauri::{
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let new_session = MenuItem::with_id(app, "new_session", "New Session", true, None::<&str>)?;
+    let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Shelly", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&new_session, &separator, &quit])?;
+    let menu = Menu::with_items(app, &[&new_session, &check_updates, &separator, &quit])?;
 
     let _tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
@@ -21,6 +22,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             match event.id.as_ref() {
                 "new_session" => {
                     let _ = app.emit("tray-new-session", ());
+                }
+                "check_updates" => {
+                    crate::do_show_panel(app);
+                    let _ = app.emit("tray-check-updates", ());
                 }
                 "quit" => {
                     app.exit(0);

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +34,10 @@ pub struct AppSettings {
     pub panel_opacity: f32,
     #[serde(default)]
     pub panel_fade_content: bool,
+    #[serde(default)]
+    pub recent_folders: Vec<String>,
+    #[serde(default)]
+    pub path_colors: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +109,8 @@ impl Default for AppSettings {
             theme: default_theme(),
             panel_opacity: default_panel_opacity(),
             panel_fade_content: false,
+            recent_folders: Vec::new(),
+            path_colors: HashMap::new(),
         }
     }
 }
@@ -179,5 +186,27 @@ impl AttentionSettings {
     pub fn normalized(mut self) -> Self {
         self.auto_hide_timeout_ms = self.auto_hide_timeout_ms.clamp(1000, 30000);
         self
+    }
+}
+
+const MAX_RECENT: usize = 20;
+
+/// Canonicalize a path for dedup. Falls back to the original string when the
+/// path does not exist (or canonicalization fails), so we still dedupe by an
+/// unambiguous form when possible.
+pub fn canonicalize_path(path: &str) -> String {
+    match dunce::canonicalize(path) {
+        Ok(p) => p.to_string_lossy().into_owned(),
+        Err(_) => path.to_string(),
+    }
+}
+
+/// Push a path to the front of `recent_folders`, deduping and capping at 20.
+pub fn push_recent(settings: &mut AppSettings, path: &str) {
+    let norm = canonicalize_path(path);
+    settings.recent_folders.retain(|p| p != &norm);
+    settings.recent_folders.insert(0, norm);
+    if settings.recent_folders.len() > MAX_RECENT {
+        settings.recent_folders.truncate(MAX_RECENT);
     }
 }
