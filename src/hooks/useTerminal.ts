@@ -41,7 +41,7 @@ export function useTerminal(
 
     const term = new Terminal({
       theme: {
-        background: "#1a1a1a",
+        background: "rgba(0, 0, 0, 0)",
         foreground: "#e6e6e6",
         cursor: "#e6e6e6",
         selectionBackground: "#44475a",
@@ -50,6 +50,7 @@ export function useTerminal(
       fontSize: 11,
       cursorBlink: true,
       allowProposedApi: true,
+      allowTransparency: true,
     });
 
     const fitAddon = new FitAddon();
