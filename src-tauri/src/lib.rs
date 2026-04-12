@@ -811,6 +811,11 @@ fn set_default_shell(path: String, state: State<'_, AppState>) {
     *safe_lock(&state.default_shell) = path;
 }
 
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -861,6 +866,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -1080,6 +1086,7 @@ pub fn run() {
             open_recent_folder,
             get_path_colors,
             set_path_color,
+            restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

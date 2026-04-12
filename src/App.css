@@ -841,15 +841,16 @@ html, body, #root {
 .recent-clear:hover { background: var(--tab-hover-bg, rgba(255,255,255,0.06)); }
 
 .ctx-section-label {
-  font-size: 11px;
-  opacity: 0.6;
-  padding: 6px 10px 2px;
+  padding: 6px 14px 2px;
+  color: var(--menu-text);
+  font-size: 12px;
+  font-weight: 500;
 }
 .ctx-color-palette {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 4px;
-  padding: 4px 10px 8px;
+  padding: 4px 14px 8px;
 }
 .ctx-swatch {
   width: 20px;
