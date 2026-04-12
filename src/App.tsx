@@ -48,8 +48,8 @@ function App() {
   const allThemes = themes.all;
 
   const terminalTheme = useMemo(
-    () => getTerminalTheme(allThemes[currentTheme] || BUILTIN_THEMES["vs-dark"]),
-    [allThemes, currentTheme]
+    () => getTerminalTheme(allThemes[currentTheme] || BUILTIN_THEMES["vs-dark"], panelOpacity),
+    [allThemes, currentTheme, panelOpacity]
   );
 
   // Apply chrome theme on change
@@ -74,11 +74,6 @@ function App() {
       if (typeof s.panelOpacity === "number") setPanelOpacity(s.panelOpacity);
       if (typeof s.panelFadeContent === "boolean") setPanelFadeContent(s.panelFadeContent);
     }).catch(() => {});
-  }, []);
-
-  const handleThemeChange = useCallback((themeId: string) => {
-    setCurrentTheme(themeId);
-    localStorage.setItem("shelly-theme", themeId);
   }, []);
 
   const handleFontSizeChange = useCallback((size: number) => {
@@ -135,10 +130,6 @@ function App() {
         onClose={removeSession}
         onRename={renameSession}
         onRefresh={refresh}
-        currentTheme={currentTheme}
-        currentFontSize={fontSize}
-        onThemeChange={handleThemeChange}
-        onFontSizeChange={handleFontSizeChange}
         hotkey={hotkey}
         onOpenHotkeyModal={() => setHotkeyModalOpen(true)}
         onOpenThemesModal={() => setThemesModalOpen(true)}
@@ -163,15 +154,17 @@ function App() {
           currentThemeId={currentTheme}
           currentOpacity={panelOpacity}
           currentFadeContent={panelFadeContent}
-          onSaved={async (id, op, fade) => {
+          currentFontSize={fontSize}
+          onSaved={async (id, op, fade, size) => {
             setCurrentTheme(id);
             setPanelOpacity(op);
             setPanelFadeContent(fade);
+            handleFontSizeChange(size);
             localStorage.setItem("shelly-theme", id);
             try {
               const current: any = await invoke("get_settings");
               await invoke("save_app_settings", {
-                newSettings: { ...current, theme: id, panelOpacity: op, panelFadeContent: fade },
+                newSettings: { ...current, theme: id, panelOpacity: op, panelFadeContent: fade, fontSize: size },
               });
             } catch {}
           }}

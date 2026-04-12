@@ -39,10 +39,6 @@ function prettyAccelerator(accel: string): string {
 
 interface SettingsMenuProps {
   onClose: () => void;
-  onThemeChange: (themeId: string) => void;
-  onFontSizeChange: (size: number) => void;
-  currentTheme: string;
-  currentFontSize: number;
   showHints: boolean;
   onToggleHints: () => void;
   onOpenHotkeyModal: () => void;
@@ -75,10 +71,6 @@ const ALL_TRIGGER_STATUSES: string[] = ["TaskCompleted", "WaitingForInput", "Int
 
 export function SettingsMenu({
   onClose,
-  onThemeChange: _onThemeChange,
-  onFontSizeChange,
-  currentTheme: _currentTheme,
-  currentFontSize,
   showHints,
   onToggleHints,
   onOpenHotkeyModal,
@@ -124,14 +116,6 @@ export function SettingsMenu({
     setSubMenu(null);
   };
 
-  const setFontSize = async (size: number) => {
-    onFontSizeChange(size);
-    if (settings) {
-      await updateSetting("fontSize", size);
-    }
-    setSubMenu(null);
-  };
-
   const handleCollapse = (e: React.MouseEvent) => {
     e.stopPropagation();
     invoke("hide_panel");
@@ -167,33 +151,6 @@ export function SettingsMenu({
           >
             {s.path === currentShell && <span className="check">&#x2713;</span>}
             {s.label}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (subMenu === "fontSize") {
-    const sizes = [
-      { label: "Small", size: 9 },
-      { label: "Medium", size: 11 },
-      { label: "Large", size: 14 },
-      { label: "Extra Large", size: 18 },
-    ];
-    return (
-      <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
-        <div className="menu-item back" onClick={() => setSubMenu(null)}>
-          &#x2190; Text Size
-        </div>
-        <div className="menu-separator" />
-        {sizes.map((s) => (
-          <div
-            key={s.size}
-            className={`menu-item ${currentFontSize === s.size ? "checked" : ""}`}
-            onClick={() => setFontSize(s.size)}
-          >
-            {currentFontSize === s.size && <span className="check">&#x2713;</span>}
-            {s.label} ({s.size}px)
           </div>
         ))}
       </div>
@@ -243,9 +200,10 @@ export function SettingsMenu({
           );
         })}
         <div className="menu-separator" />
-        <div className="menu-item" style={{ gap: 8 }}>
-          Auto-hide (ms)
+        <div className="menu-item">
+          <span>Auto-hide</span>
           <input
+            className="menu-number-input"
             type="number"
             min={1000}
             max={30000}
@@ -255,8 +213,8 @@ export function SettingsMenu({
               const v = parseInt(e.target.value, 10);
               if (!Number.isNaN(v)) updateAttention({ autoHideTimeoutMs: v });
             }}
-            style={{ width: 80, marginLeft: "auto" }}
           />
+          <span className="menu-value" style={{ minWidth: "auto" }}>ms</span>
         </div>
       </div>
     );
@@ -268,11 +226,7 @@ export function SettingsMenu({
         Collapse to bar
       </div>
       <div className="menu-item arrow" onClick={() => { onOpenThemesModal(); onClose(); }}>
-        Theme…
-      </div>
-      <div className="menu-item arrow" onClick={() => setSubMenu("fontSize")}>
-        Text Size
-        <span className="menu-value">{currentFontSize}px</span>
+        Appearance…
       </div>
       <div className="menu-item arrow" onClick={() => setSubMenu("shell")}>
         Default Shell

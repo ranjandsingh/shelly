@@ -63,16 +63,19 @@ export function hexToRgba(color: string, alpha: number): string {
 export function applyThemeToCSS(theme: Theme, opacity: number = 1, fadeContent: boolean = false) {
   const root = document.documentElement;
   const c = theme.chrome;
-  const panelBg = opacity >= 1 ? c.panelBg : hexToRgba(c.panelBg, opacity);
+  const translucent = opacity < 1;
+  const panelBg = translucent ? hexToRgba(c.panelBg, opacity) : c.panelBg;
+  const tabBarBg = translucent ? hexToRgba(c.tabBarBg, opacity) : c.tabBarBg;
+  const dragBarBg = translucent ? hexToRgba(c.dragBarBg, opacity) : c.dragBarBg;
   root.style.setProperty("--panel-bg", panelBg);
-  root.style.setProperty("--tab-bar-bg", c.tabBarBg);
+  root.style.setProperty("--tab-bar-bg", tabBarBg);
   root.style.setProperty("--tab-active-bg", c.tabActiveBg);
   root.style.setProperty("--tab-hover-bg", c.tabHoverBg);
   root.style.setProperty("--tab-text", c.tabText);
   root.style.setProperty("--tab-hover-text", c.tabHoverText);
   root.style.setProperty("--tab-active-text", c.tabActiveText);
   root.style.setProperty("--tab-active-ring", c.tabActiveRing);
-  root.style.setProperty("--drag-bar-bg", c.dragBarBg);
+  root.style.setProperty("--drag-bar-bg", dragBarBg);
   root.style.setProperty("--drag-handle", c.dragHandle);
   root.style.setProperty("--border-color", c.border);
   root.style.setProperty("--menu-bg", c.menuBg);
@@ -83,9 +86,9 @@ export function applyThemeToCSS(theme: Theme, opacity: number = 1, fadeContent: 
   root.style.setProperty("--content-opacity", fadeContent ? String(opacity) : "1");
 }
 
-export function getTerminalTheme(theme: Theme) {
+export function getTerminalTheme(theme: Theme, opacity: number = 1) {
   return {
-    background: theme.terminal.background,
+    background: opacity < 1 ? "rgba(0, 0, 0, 0)" : theme.terminal.background,
     foreground: theme.terminal.foreground,
     cursor: theme.terminal.cursor,
     selectionBackground: theme.terminal.selectionBackground,

@@ -11,10 +11,6 @@ interface SessionTabBarProps {
   onClose: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onRefresh: () => void;
-  currentTheme: string;
-  currentFontSize: number;
-  onThemeChange: (themeId: string) => void;
-  onFontSizeChange: (size: number) => void;
   hotkey: string;
   onOpenHotkeyModal: () => void;
   onOpenThemesModal: () => void;
@@ -63,10 +59,6 @@ export function SessionTabBar({
   onClose,
   onRename,
   onRefresh,
-  currentTheme,
-  currentFontSize,
-  onThemeChange,
-  onFontSizeChange,
   hotkey,
   onOpenHotkeyModal,
   onOpenThemesModal,
@@ -278,10 +270,6 @@ export function SessionTabBar({
         {showMenu && (
           <SettingsMenu
             onClose={() => setShowMenu(false)}
-            onThemeChange={onThemeChange}
-            onFontSizeChange={onFontSizeChange}
-            currentTheme={currentTheme}
-            currentFontSize={currentFontSize}
             showHints={showHints}
             onToggleHints={() => setShowHints(!showHints)}
             onOpenHotkeyModal={onOpenHotkeyModal}
