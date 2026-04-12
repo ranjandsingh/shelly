@@ -1,0 +1,29 @@
+# Format: <raw-url> [| optional-slug]
+# Dark
+https://raw.githubusercontent.com/sdras/night-owl-vscode-theme/main/themes/Night%20Owl-color-theme.json | night-owl
+https://raw.githubusercontent.com/enkia/tokyo-night-vscode-theme/master/themes/tokyo-night-color-theme.json | tokyo-night
+https://raw.githubusercontent.com/enkia/tokyo-night-vscode-theme/master/themes/tokyo-night-storm-color-theme.json | tokyo-night-storm
+https://raw.githubusercontent.com/primer/github-vscode-theme/main/themes/dark.json | github-dark
+https://raw.githubusercontent.com/primer/github-vscode-theme/main/themes/dark-dimmed.json | github-dark-dimmed
+https://raw.githubusercontent.com/arcticicestudio/nord-visual-studio-code/develop/themes/nord-color-theme.json | nord
+https://raw.githubusercontent.com/jdinhlife/gruvbox/main/themes/gruvbox-dark-hard.json | gruvbox-dark
+https://raw.githubusercontent.com/catppuccin/vscode/main/themes/mocha.json | catppuccin-mocha
+https://raw.githubusercontent.com/catppuccin/vscode/main/themes/macchiato.json | catppuccin-macchiato
+https://raw.githubusercontent.com/material-theme/vsc-material-theme/main/build/themes/Material-Theme-Default.json | material-default
+https://raw.githubusercontent.com/material-theme/vsc-material-theme/main/build/themes/Material-Theme-Palenight.json | material-palenight
+https://raw.githubusercontent.com/material-theme/vsc-material-theme/main/build/themes/Material-Theme-Ocean.json | material-ocean
+https://raw.githubusercontent.com/ayu-theme/vscode-ayu/master/ayu-dark.json | ayu-dark
+https://raw.githubusercontent.com/ayu-theme/vscode-ayu/master/ayu-mirage.json | ayu-mirage
+https://raw.githubusercontent.com/robb0wen/synthwave-vscode/master/themes/synthwave-color-theme.json | synthwave-84
+https://raw.githubusercontent.com/ahmadawais/shades-of-purple-vscode/master/themes/shades-of-purple-color-theme.json | shades-of-purple
+https://raw.githubusercontent.com/wesbos/cobalt2-vscode/master/theme/cobalt2.json | cobalt2
+https://raw.githubusercontent.com/EliverLara/Andromeda/master/themes/andromeda-color-theme.json | andromeda
+https://raw.githubusercontent.com/johnpapa/vscode-winteriscoming/main/themes/WinterIsComing-dark-blue-color-theme.json | winter-is-coming-dark
+https://raw.githubusercontent.com/tinkertrain/panda-syntax-vscode/master/dist/Panda.json | panda
+
+# Light
+https://raw.githubusercontent.com/primer/github-vscode-theme/main/themes/light.json | github-light
+https://raw.githubusercontent.com/catppuccin/vscode/main/themes/latte.json | catppuccin-latte
+https://raw.githubusercontent.com/ayu-theme/vscode-ayu/master/ayu-light.json | ayu-light
+https://raw.githubusercontent.com/johnpapa/vscode-winteriscoming/main/themes/WinterIsComing-light-color-theme.json | winter-is-coming-light
+https://raw.githubusercontent.com/ChromeDevTools/vscode-theme-solarized-light/master/themes/Solarized-light-color-theme.json | solarized-light
