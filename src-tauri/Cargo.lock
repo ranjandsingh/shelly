@@ -4226,6 +4226,7 @@ version = "0.2.2"
 dependencies = [
  "base64 0.22.1",
  "dirs",
+ "dunce",
  "env_logger",
  "log",
  "objc2",
