@@ -35,6 +35,8 @@ struct AppState {
     animating: Mutex<bool>,
     panel_size: Mutex<(f64, f64)>,
     display_info: Mutex<display_info::DisplayInfo>,
+    #[cfg(windows)]
+    previous_foreground: Mutex<Option<isize>>,
 }
 
 const PANEL_W: f64 = 720.0;
@@ -74,11 +76,52 @@ fn get_top_inset(app: &AppHandle) -> f64 {
         .unwrap_or(0.0)
 }
 
+#[cfg(windows)]
+fn capture_previous_foreground(app: &AppHandle) {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let Some(state) = app.try_state::<AppState>() else { return; };
+    let fg = unsafe { GetForegroundWindow() };
+    if fg.0.is_null() { return; }
+    let fg_isize = fg.0 as isize;
+
+    // Skip if the foreground window belongs to Shelly (main, notch).
+    for label in ["main", "notch"] {
+        if let Some(win) = app.get_webview_window(label) {
+            if let Ok(h) = win.hwnd() {
+                if h.0 as isize == fg_isize { return; }
+            }
+        }
+    }
+    *safe_lock(&state.previous_foreground) = Some(fg_isize);
+}
+
+#[cfg(not(windows))]
+fn capture_previous_foreground(_app: &AppHandle) {}
+
+#[cfg(windows)]
+fn restore_previous_foreground(app: &AppHandle) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, SetForegroundWindow};
+    let Some(state) = app.try_state::<AppState>() else { return; };
+    let Some(prev) = safe_lock(&state.previous_foreground).take() else { return; };
+    let hwnd = HWND(prev as *mut _);
+    unsafe {
+        if IsWindow(hwnd).as_bool() {
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn restore_previous_foreground(_app: &AppHandle) {}
+
 fn do_show_panel(app: &AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if main_win.is_visible().unwrap_or(false) { return; }
         if is_animating(app) { return; }
         set_animating(app, true);
+
+        capture_previous_foreground(app);
 
         let sw = get_screen_width(app);
         let (target_w, target_h) = get_panel_size(app);
@@ -197,6 +240,8 @@ fn do_hide_panel(app: &AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
             }
+            // Hand focus back to the app the user was on before opening Shelly.
+            restore_previous_foreground(&handle);
             // Restore notch after panel is fully hidden
             if let Some(notch) = handle.get_webview_window("notch") {
                 let _ = notch.show();
@@ -723,6 +768,8 @@ pub fn run() {
             animating: Mutex::new(false),
             panel_size: Mutex::new((PANEL_W, PANEL_H)),
             display_info: Mutex::new(display_info::DisplayInfo::default()),
+            #[cfg(windows)]
+            previous_foreground: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

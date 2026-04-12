@@ -16,8 +16,13 @@ struct PtyInstance {
     master_writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
     output_buffer: Vec<u8>,
+    // Byte offset into `output_buffer` of the last chunk that has been emitted
+    // via `terminal-output`. Used to compute the delta to emit on the next
+    // read and to replay any data that accumulated while `suppress_live` was on.
+    last_emitted: usize,
     suppress_live: bool,
     shutdown: Arc<AtomicBool>,
+    app: AppHandle,
 }
 
 pub struct PtyManager {
@@ -68,8 +73,10 @@ impl PtyManager {
             master_writer: writer,
             master: pair.master,
             output_buffer: Vec::new(),
+            last_emitted: 0,
             suppress_live: false,
             shutdown: shutdown.clone(),
+            app: app.clone(),
         }));
 
         {
@@ -96,86 +103,34 @@ impl PtyManager {
         shutdown: Arc<AtomicBool>,
     ) {
         let mut buf = [0u8; 4096];
-        let mut pending = Vec::new();
 
         loop {
             // Check shutdown flag before blocking read
             if shutdown.load(Ordering::Acquire) {
                 log::info!("PtyManager: shutdown signal for session {session_id}");
-                // Flush any remaining pending data
-                if !pending.is_empty() {
-                    let b64 = BASE64.encode(&pending);
-                    let suppress = safe_lock(&instance).suppress_live;
-                    if !suppress {
-                        let _ = app.emit("terminal-output", serde_json::json!({
-                            "sessionId": session_id.to_string(),
-                            "data": b64
-                        }));
-                    }
-                }
                 break;
             }
 
             match reader.read(&mut buf) {
                 Ok(0) => {
-                    // Flush pending before exit
-                    if !pending.is_empty() {
-                        let b64 = BASE64.encode(&pending);
-                        let suppress = safe_lock(&instance).suppress_live;
-                        if !suppress {
-                            let _ = app.emit("terminal-output", serde_json::json!({
-                                "sessionId": session_id.to_string(),
-                                "data": b64
-                            }));
-                        }
-                    }
                     let _ = app.emit("process-exited", session_id.to_string());
                     break;
                 }
                 Ok(n) => {
                     let data = &buf[..n];
-                    pending.extend_from_slice(data);
-
-                    // Append to instance buffer (cap at MAX_BUFFER_SIZE)
-                    {
-                        let mut inst = safe_lock(&instance);
-                        inst.output_buffer.extend_from_slice(data);
-                        if inst.output_buffer.len() > MAX_BUFFER_SIZE {
-                            let keep_from = inst.output_buffer.len() - MAX_BUFFER_SIZE / 2;
-                            inst.output_buffer = inst.output_buffer[keep_from..].to_vec();
-                        }
-                    }
-
-                    // Flush: always emit after each read to avoid starvation
-                    // (reader.read() blocks, so we can't rely on a timer to flush later).
-                    // The 4KB read buffer provides natural batching during heavy output.
-                    let b64 = BASE64.encode(&pending);
-                    let suppress = safe_lock(&instance).suppress_live;
-                    if !suppress {
+                    if let Some(delta) = Self::append_and_take_delta(&instance, data) {
+                        let b64 = BASE64.encode(&delta);
                         let _ = app.emit("terminal-output", serde_json::json!({
                             "sessionId": session_id.to_string(),
                             "data": b64
                         }));
                     }
-                    pending.clear();
                 }
                 Err(e) => {
-                    // On shutdown, read errors are expected (pipe closed)
                     if shutdown.load(Ordering::Acquire) {
                         log::info!("PtyManager: read error after shutdown for session {session_id}: {e}");
                     } else {
                         log::warn!("PtyManager: read error for session {session_id}: {e}");
-                    }
-                    // Flush pending before exit
-                    if !pending.is_empty() {
-                        let b64 = BASE64.encode(&pending);
-                        let suppress = safe_lock(&instance).suppress_live;
-                        if !suppress {
-                            let _ = app.emit("terminal-output", serde_json::json!({
-                                "sessionId": session_id.to_string(),
-                                "data": b64
-                            }));
-                        }
                     }
                     let _ = app.emit("process-exited", session_id.to_string());
                     break;
@@ -183,6 +138,28 @@ impl PtyManager {
             }
         }
         log::info!("PtyManager: read loop ended for session {session_id}");
+    }
+
+    /// Append `data` to the instance's buffer, handle truncation, and return
+    /// the delta to emit (None if suppressed or nothing new).
+    fn append_and_take_delta(instance: &Arc<Mutex<PtyInstance>>, data: &[u8]) -> Option<Vec<u8>> {
+        let mut inst = safe_lock(instance);
+        inst.output_buffer.extend_from_slice(data);
+        if inst.output_buffer.len() > MAX_BUFFER_SIZE {
+            let keep_from = inst.output_buffer.len() - MAX_BUFFER_SIZE / 2;
+            inst.output_buffer = inst.output_buffer[keep_from..].to_vec();
+            inst.last_emitted = inst.last_emitted.saturating_sub(keep_from);
+        }
+        if inst.suppress_live {
+            return None;
+        }
+        if inst.output_buffer.len() > inst.last_emitted {
+            let delta = inst.output_buffer[inst.last_emitted..].to_vec();
+            inst.last_emitted = inst.output_buffer.len();
+            Some(delta)
+        } else {
+            None
+        }
     }
 
     pub fn write_input(&self, session_id: Uuid, data: &[u8]) -> Result<(), String> {
@@ -211,16 +188,41 @@ impl PtyManager {
         let instances = safe_lock(&self.instances);
         let instance = instances.get(&session_id)
             .ok_or("Session not found")?;
-        let inst = safe_lock(instance);
-        Ok(BASE64.encode(&inst.output_buffer))
+        let mut inst = safe_lock(instance);
+        let encoded = BASE64.encode(&inst.output_buffer);
+        // Caller is taking everything; future live events should only carry
+        // what's appended after this point.
+        inst.last_emitted = inst.output_buffer.len();
+        Ok(encoded)
     }
 
     pub fn suppress_live_output(&self, session_id: Uuid, suppress: bool) -> Result<(), String> {
         let instances = safe_lock(&self.instances);
         let instance = instances.get(&session_id)
-            .ok_or("Session not found")?;
-        let mut inst = safe_lock(instance);
-        inst.suppress_live = suppress;
+            .ok_or("Session not found")?
+            .clone();
+        drop(instances);
+
+        // On transition to unsuppressed, emit anything that accumulated in the
+        // buffer while suppression was on so no bytes are lost.
+        let (delta, app) = {
+            let mut inst = safe_lock(&instance);
+            inst.suppress_live = suppress;
+            if !suppress && inst.output_buffer.len() > inst.last_emitted {
+                let slice = inst.output_buffer[inst.last_emitted..].to_vec();
+                inst.last_emitted = inst.output_buffer.len();
+                (Some(slice), inst.app.clone())
+            } else {
+                (None, inst.app.clone())
+            }
+        };
+        if let Some(data) = delta {
+            let b64 = BASE64.encode(&data);
+            let _ = app.emit("terminal-output", serde_json::json!({
+                "sessionId": session_id.to_string(),
+                "data": b64
+            }));
+        }
         Ok(())
     }
 
