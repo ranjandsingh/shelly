@@ -32,9 +32,10 @@ export function useTerminal(
   const lastWorkDirRef = useRef<string>("");
   const replayingRef = useRef<boolean>(false);
 
-  // Initialize xterm once
+  // Initialize xterm once, but only after the container has real dimensions.
   useEffect(() => {
     if (!containerRef.current || termRef.current) return;
+    const container = containerRef.current;
 
     const term = new Terminal({
       theme: {
@@ -51,19 +52,32 @@ export function useTerminal(
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(containerRef.current);
-    fitAddon.fit();
 
+    // Stash refs immediately so attachSession can see them; open() is deferred.
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    let opened = false;
+    const tryOpen = () => {
+      if (opened) return;
+      if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+        term.open(container);
+        fitAddon.fit();
+        opened = true;
+        initObserver.disconnect();
+      }
+    };
+
+    const initObserver = new ResizeObserver(() => tryOpen());
+    initObserver.observe(container);
+    // Attempt immediately in case the container already has size.
+    tryOpen();
 
     // Handle input
     term.onData((data) => {
       if (!currentSessionRef.current) return;
-      // Suppress terminal responses (e.g. cursor position \x1b[row;colR) during buffer replay
       if (replayingRef.current) return;
 
-      // If process exited and user presses Enter, restart the terminal
       if (sessionExitedRef.current && (data === "\r" || data === "\n")) {
         sessionExitedRef.current = false;
         const sid = currentSessionRef.current;
@@ -72,7 +86,6 @@ export function useTerminal(
         fitAddon.fit();
         (async () => {
           try {
-            // Re-subscribe to output first
             if (unlistenRef.current) {
               unlistenRef.current();
               unlistenRef.current = null;
@@ -106,8 +119,9 @@ export function useTerminal(
       }
     });
 
-    // Handle resize (debounced)
-    const observer = new ResizeObserver(() => {
+    // Debounced resize — only runs after xterm is open
+    const resizeObserver = new ResizeObserver(() => {
+      if (!opened) return;
       if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
       resizeTimerRef.current = window.setTimeout(() => {
         fitAddon.fit();
@@ -116,15 +130,16 @@ export function useTerminal(
         }
       }, 150);
     });
-    observer.observe(containerRef.current);
+    resizeObserver.observe(container);
 
-    // Re-fit terminal after panel animation completes
+    // Re-fit + force-paint after panel animation ends
     let unlistenAnim: (() => void) | null = null;
     listen<boolean>("panel-animating", (e) => {
       if (!e.payload) {
-        // Animation ended — re-fit with a small delay for layout to settle
         setTimeout(() => {
+          if (!opened) tryOpen();
           fitAddon.fit();
+          try { term.refresh(0, term.rows - 1); } catch {}
           if (currentSessionRef.current) {
             resizeTerminal(currentSessionRef.current, term.cols, term.rows);
           }
@@ -132,14 +147,11 @@ export function useTerminal(
       }
     }).then((fn) => { unlistenAnim = fn as unknown as () => void; });
 
-    // Block xterm's native paste handler — we handle paste via the custom key handler below.
-    // Without this, both the native paste event and our Ctrl+V handler write to the PTY.
     term.textarea?.addEventListener("paste", (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
     }, { capture: true });
 
-    // Clipboard handling
     term.attachCustomKeyEventHandler((e) => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key === "v" && e.type === "keydown") {
@@ -161,7 +173,8 @@ export function useTerminal(
     });
 
     return () => {
-      observer.disconnect();
+      initObserver.disconnect();
+      resizeObserver.disconnect();
       unlistenAnim?.();
       term.dispose();
       termRef.current = null;
@@ -186,6 +199,14 @@ export function useTerminal(
       const fitAddon = fitAddonRef.current;
       if (!term || !fitAddon) {
         console.warn("[useTerminal] attachSession: term or fitAddon not ready");
+        return;
+      }
+      // If xterm hasn't been opened yet (container was zero-size at mount), wait briefly.
+      for (let i = 0; i < 20 && !term.element; i++) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      if (!term.element) {
+        console.warn("[useTerminal] attachSession: xterm never opened (container has no size)");
         return;
       }
 
