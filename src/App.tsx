@@ -7,6 +7,8 @@ import { useAttention } from "./hooks/useAttention";
 import { listen } from "@tauri-apps/api/event";
 import { DragBar } from "./components/DragBar";
 import { HotkeyCaptureModal } from "./components/HotkeyCaptureModal";
+import { ThemesModal } from "./components/ThemesModal";
+import { useThemes } from "./hooks/useThemes";
 import { BUILTIN_THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
 import "./App.css";
 
@@ -33,22 +35,28 @@ function App() {
   const [pillShape, setPillShape] = useState(false);
   const [hotkey, setHotkey] = useState("CmdOrCtrl+`");
   const [hotkeyModalOpen, setHotkeyModalOpen] = useState(false);
+  const [panelOpacity, setPanelOpacity] = useState(1);
+  const [panelFadeContent, setPanelFadeContent] = useState(false);
+  const [themesModalOpen, setThemesModalOpen] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   );
 
+  const themes = useThemes();
+  const allThemes = themes.all;
+
   const terminalTheme = useMemo(
-    () => getTerminalTheme(BUILTIN_THEMES[currentTheme] || BUILTIN_THEMES["vs-dark"]),
-    [currentTheme]
+    () => getTerminalTheme(allThemes[currentTheme] || BUILTIN_THEMES["vs-dark"]),
+    [allThemes, currentTheme]
   );
 
   // Apply chrome theme on change
   useEffect(() => {
-    const theme = BUILTIN_THEMES[currentTheme] || BUILTIN_THEMES["vs-dark"];
-    applyThemeToCSS(theme);
-  }, [currentTheme]);
+    const theme = allThemes[currentTheme] || BUILTIN_THEMES["vs-dark"];
+    applyThemeToCSS(theme, panelOpacity, panelFadeContent);
+  }, [allThemes, currentTheme, panelOpacity, panelFadeContent]);
 
   // Load saved theme from localStorage
   useEffect(() => {
@@ -57,6 +65,15 @@ function App() {
     const savedSize = localStorage.getItem("shelly-font-size");
     if (savedSize) setFontSize(parseInt(savedSize, 10));
     invoke<string>("get_hotkey").then(setHotkey).catch(() => {});
+    invoke<{
+      theme?: string;
+      panelOpacity?: number;
+      panelFadeContent?: boolean;
+    }>("get_settings").then((s) => {
+      if (typeof s.theme === "string") setCurrentTheme(s.theme);
+      if (typeof s.panelOpacity === "number") setPanelOpacity(s.panelOpacity);
+      if (typeof s.panelFadeContent === "boolean") setPanelFadeContent(s.panelFadeContent);
+    }).catch(() => {});
   }, []);
 
   const handleThemeChange = useCallback((themeId: string) => {
@@ -124,6 +141,7 @@ function App() {
         onFontSizeChange={handleFontSizeChange}
         hotkey={hotkey}
         onOpenHotkeyModal={() => setHotkeyModalOpen(true)}
+        onOpenThemesModal={() => setThemesModalOpen(true)}
       />
       <div className="terminal-area">
         <TerminalView
@@ -138,6 +156,26 @@ function App() {
           initial={hotkey}
           onSaved={setHotkey}
           onClose={() => setHotkeyModalOpen(false)}
+        />
+      )}
+      {themesModalOpen && (
+        <ThemesModal
+          currentThemeId={currentTheme}
+          currentOpacity={panelOpacity}
+          currentFadeContent={panelFadeContent}
+          onSaved={async (id, op, fade) => {
+            setCurrentTheme(id);
+            setPanelOpacity(op);
+            setPanelFadeContent(fade);
+            localStorage.setItem("shelly-theme", id);
+            try {
+              const current: any = await invoke("get_settings");
+              await invoke("save_app_settings", {
+                newSettings: { ...current, theme: id, panelOpacity: op, panelFadeContent: fade },
+              });
+            } catch {}
+          }}
+          onClose={() => setThemesModalOpen(false)}
         />
       )}
     </div>

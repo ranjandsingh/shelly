@@ -17,6 +17,7 @@ interface SessionTabBarProps {
   onFontSizeChange: (size: number) => void;
   hotkey: string;
   onOpenHotkeyModal: () => void;
+  onOpenThemesModal: () => void;
 }
 
 const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
@@ -68,6 +69,7 @@ export function SessionTabBar({
   onFontSizeChange,
   hotkey,
   onOpenHotkeyModal,
+  onOpenThemesModal,
 }: SessionTabBarProps) {
   const hints = useMemo(
     () => [`${prettyHotkey(hotkey)} to toggle panel`, ...BASE_HINTS],
@@ -283,6 +285,7 @@ export function SessionTabBar({
             showHints={showHints}
             onToggleHints={() => setShowHints(!showHints)}
             onOpenHotkeyModal={onOpenHotkeyModal}
+            onOpenThemesModal={onOpenThemesModal}
           />
         )}
       </div>

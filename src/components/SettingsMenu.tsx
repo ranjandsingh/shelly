@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { BUILTIN_THEMES } from "../lib/themes";
 
 const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
 
@@ -47,6 +46,7 @@ interface SettingsMenuProps {
   showHints: boolean;
   onToggleHints: () => void;
   onOpenHotkeyModal: () => void;
+  onOpenThemesModal: () => void;
 }
 
 interface ShellInfo {
@@ -75,13 +75,14 @@ const ALL_TRIGGER_STATUSES: string[] = ["TaskCompleted", "WaitingForInput", "Int
 
 export function SettingsMenu({
   onClose,
-  onThemeChange,
+  onThemeChange: _onThemeChange,
   onFontSizeChange,
-  currentTheme,
+  currentTheme: _currentTheme,
   currentFontSize,
   showHints,
   onToggleHints,
   onOpenHotkeyModal,
+  onOpenThemesModal,
 }: SettingsMenuProps) {
   const [subMenu, setSubMenu] = useState<string | null>(null);
   const [shells, setShells] = useState<ShellInfo[]>([]);
@@ -128,11 +129,6 @@ export function SettingsMenu({
     if (settings) {
       await updateSetting("fontSize", size);
     }
-    setSubMenu(null);
-  };
-
-  const setTheme = (themeId: string) => {
-    onThemeChange(themeId);
     setSubMenu(null);
   };
 
@@ -198,31 +194,6 @@ export function SettingsMenu({
           >
             {currentFontSize === s.size && <span className="check">&#x2713;</span>}
             {s.label} ({s.size}px)
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (subMenu === "theme") {
-    return (
-      <div className="settings-menu" onClick={(e) => e.stopPropagation()}>
-        <div className="menu-item back" onClick={() => setSubMenu(null)}>
-          &#x2190; Theme
-        </div>
-        <div className="menu-separator" />
-        {Object.entries(BUILTIN_THEMES).map(([id, theme]) => (
-          <div
-            key={id}
-            className={`menu-item ${currentTheme === id ? "checked" : ""}`}
-            onClick={() => setTheme(id)}
-          >
-            {currentTheme === id && <span className="check">&#x2713;</span>}
-            <span
-              className="theme-preview"
-              style={{ background: theme.terminal.background, borderColor: theme.chrome.border }}
-            />
-            {theme.name}
           </div>
         ))}
       </div>
@@ -296,9 +267,8 @@ export function SettingsMenu({
       <div className="menu-item" onClick={handleCollapse}>
         Collapse to bar
       </div>
-      <div className="menu-item arrow" onClick={() => setSubMenu("theme")}>
-        Theme
-        <span className="menu-value">{BUILTIN_THEMES[currentTheme]?.name}</span>
+      <div className="menu-item arrow" onClick={() => { onOpenThemesModal(); onClose(); }}>
+        Theme…
       </div>
       <div className="menu-item arrow" onClick={() => setSubMenu("fontSize")}>
         Text Size
