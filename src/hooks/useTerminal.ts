@@ -3,6 +3,8 @@ import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { emitSessionInteraction } from "../lib/interactionBus";
+import { registerTerminalFocus } from "../lib/terminalFocus";
 import {
   createTerminal as createPty,
   writeInput,
@@ -64,6 +66,7 @@ export function useTerminal(
         term.open(container);
         fitAddon.fit();
         opened = true;
+        registerTerminalFocus(() => term.focus());
         initObserver.disconnect();
       }
     };
@@ -119,6 +122,16 @@ export function useTerminal(
       }
     });
 
+    term.onKey(() => {
+      const sid = currentSessionRef.current;
+      if (sid) emitSessionInteraction(sid);
+    });
+
+    term.onScroll(() => {
+      const sid = currentSessionRef.current;
+      if (sid) emitSessionInteraction(sid);
+    });
+
     // Debounced resize — only runs after xterm is open
     const resizeObserver = new ResizeObserver(() => {
       if (!opened) return;
@@ -131,6 +144,12 @@ export function useTerminal(
       }, 150);
     });
     resizeObserver.observe(container);
+
+    const mouseDownHandler = () => {
+      const sid = currentSessionRef.current;
+      if (sid) emitSessionInteraction(sid);
+    };
+    container.addEventListener("mousedown", mouseDownHandler);
 
     // Re-fit + force-paint after panel animation ends
     let unlistenAnim: (() => void) | null = null;
@@ -175,7 +194,9 @@ export function useTerminal(
     return () => {
       initObserver.disconnect();
       resizeObserver.disconnect();
+      container.removeEventListener("mousedown", mouseDownHandler);
       unlistenAnim?.();
+      registerTerminalFocus(null);
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;

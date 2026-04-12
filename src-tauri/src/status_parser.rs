@@ -229,6 +229,32 @@ impl StatusParser {
         // Emit sessions-updated for notch
         let sessions = store.get_sessions();
         let _ = app.emit("sessions-updated", &sessions);
+
+        // Attention-required: pop panel if enabled & status is a configured trigger,
+        // and we haven't already popped for this status instance.
+        if matches!(
+            status,
+            TerminalStatus::TaskCompleted
+                | TerminalStatus::WaitingForInput
+                | TerminalStatus::Interrupted
+        ) {
+            use tauri::Manager;
+            if let Some(state) = app.try_state::<crate::AppState>() {
+                let settings = crate::util::safe_lock(&state.settings).clone();
+                if settings.attention.enabled
+                    && settings.attention.trigger_statuses.contains(&status)
+                    && store.try_mark_popped(session_id)
+                {
+                    let _ = app.emit(
+                        "attention-required",
+                        serde_json::json!({
+                            "sessionId": session_id,
+                            "status": status,
+                        }),
+                    );
+                }
+            }
+        }
     }
 
     /// Check and fire pending sounds (call this periodically, e.g. from status polling)

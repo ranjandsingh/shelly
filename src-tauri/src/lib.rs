@@ -624,6 +624,38 @@ fn get_display_info(state: State<'_, AppState>) -> display_info::DisplayInfo {
     safe_lock(&state.display_info).clone()
 }
 
+#[tauri::command]
+fn mark_session_interacted(session_id: String, state: State<'_, AppState>, app: AppHandle) {
+    if state.session_store.mark_interacted(&session_id) {
+        let _ = app.emit(
+            "status-changed",
+            serde_json::json!({
+                "sessionId": session_id,
+                "status": session_store::TerminalStatus::Idle,
+            }),
+        );
+        let _ = app.emit("sessions-updated", &state.session_store.get_sessions());
+    }
+}
+
+#[tauri::command]
+fn get_attention_settings(state: State<'_, AppState>) -> settings::AttentionSettings {
+    util::safe_lock(&state.settings).attention.clone()
+}
+
+#[tauri::command]
+fn set_attention_settings(
+    new_attention: settings::AttentionSettings,
+    state: State<'_, AppState>,
+) {
+    let normalized = new_attention.normalized();
+    {
+        let mut s = util::safe_lock(&state.settings);
+        s.attention = normalized;
+        settings::save_settings(&s);
+    }
+}
+
 // --- Shell commands ---
 
 #[tauri::command]
@@ -886,6 +918,9 @@ pub fn run() {
             get_hotkey,
             set_hotkey,
             get_display_info,
+            mark_session_interacted,
+            get_attention_settings,
+            set_attention_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
