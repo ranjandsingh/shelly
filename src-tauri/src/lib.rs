@@ -20,7 +20,7 @@ use pty::PtyManager;
 use session_store::{SessionStore, TerminalSession};
 use shell_detect::{ShellInfo, detect_default_shell, get_available_shells};
 use status_parser::StatusParser;
-use util::safe_lock;
+use util::{capitalize_first, safe_lock};
 
 struct AppState {
     pty_manager: PtyManager,
@@ -460,7 +460,7 @@ async fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Optio
         let path_str = path.to_string();
         let folder_name = std::path::Path::new(&path_str)
             .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
+            .map(|n| capitalize_first(&n.to_string_lossy()))
             .unwrap_or_else(|| path_str.clone());
         let session = state.session_store.add_session(
             Some(folder_name),
@@ -487,7 +487,7 @@ fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
             let path_str = path.to_string_lossy().into_owned();
             if path.is_dir() {
                 let folder_name = path.file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
+                    .map(|n| capitalize_first(&n.to_string_lossy()))
                     .unwrap_or_else(|| path_str.clone());
                 let session = state.session_store.add_session(
                     Some(folder_name),
@@ -576,7 +576,7 @@ fn open_recent_folder(
 ) -> Result<session_store::TerminalSession, String> {
     let folder_name = std::path::Path::new(&path)
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+        .map(|n| capitalize_first(&n.to_string_lossy()))
         .unwrap_or_else(|| path.clone());
     let session = state.session_store.add_session(
         Some(folder_name),
