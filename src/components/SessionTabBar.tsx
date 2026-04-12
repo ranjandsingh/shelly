@@ -235,6 +235,10 @@ export function SessionTabBar({
             onClick={() => onSelect(s.id)}
             onContextMenu={(e) => handleContextMenu(e, s.id)}
           >
+            {(() => {
+              const color = colorForPath(s.workingDirectory);
+              return color ? <span className="tab-color-strip" style={{ background: color }} /> : null;
+            })()}
             {STATUS_ICON[s.status] || STATUS_ICON.Idle}
             {renamingId === s.id ? (
               <input

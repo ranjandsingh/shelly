@@ -772,6 +772,16 @@ html, body, #root {
   border-color: transparent !important;
 }
 
+.tab-color-strip {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 .recent-dropdown-wrap { position: relative; display: inline-block; }
 .recent-dropdown {
   position: absolute;
