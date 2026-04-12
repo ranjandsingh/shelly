@@ -27,6 +27,12 @@ pub struct AppSettings {
     pub panel_height: f64,
     #[serde(default)]
     pub attention: AttentionSettings,
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    #[serde(default = "default_panel_opacity")]
+    pub panel_opacity: f32,
+    #[serde(default)]
+    pub panel_fade_content: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +84,8 @@ fn default_panel_height() -> f64 {
 fn default_hotkey() -> String {
     "CmdOrCtrl+`".to_string()
 }
+fn default_theme() -> String { "vs-dark".to_string() }
+fn default_panel_opacity() -> f32 { 1.0 }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -93,6 +101,9 @@ impl Default for AppSettings {
             panel_width: default_panel_width(),
             panel_height: default_panel_height(),
             attention: AttentionSettings::default(),
+            theme: default_theme(),
+            panel_opacity: default_panel_opacity(),
+            panel_fade_content: false,
         }
     }
 }
@@ -111,11 +122,13 @@ fn settings_path() -> PathBuf {
 
 pub fn load_settings() -> AppSettings {
     let path = settings_path();
-    if let Ok(data) = fs::read_to_string(&path) {
-        serde_json::from_str(&data).unwrap_or_default()
+    let mut s = if let Ok(data) = fs::read_to_string(&path) {
+        serde_json::from_str::<AppSettings>(&data).unwrap_or_default()
     } else {
         AppSettings::default()
-    }
+    };
+    s.panel_opacity = s.panel_opacity.clamp(0.5, 1.0);
+    s
 }
 
 pub fn save_settings(settings: &AppSettings) {
