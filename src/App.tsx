@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { TerminalView } from "./components/TerminalView";
 import { SessionTabBar } from "./components/SessionTabBar";
 import { useSessionStore } from "./hooks/useSessionStore";
 import { useAttention } from "./hooks/useAttention";
 import { listen } from "@tauri-apps/api/event";
 import { DragBar } from "./components/DragBar";
+import { HotkeyCaptureModal } from "./components/HotkeyCaptureModal";
 import { THEMES, applyThemeToCSS, getTerminalTheme } from "./lib/themes";
 import "./App.css";
 
@@ -29,6 +31,8 @@ function App() {
   const [currentTheme, setCurrentTheme] = useState("vs-dark");
   const [fontSize, setFontSize] = useState(11);
   const [pillShape, setPillShape] = useState(false);
+  const [hotkey, setHotkey] = useState("CmdOrCtrl+`");
+  const [hotkeyModalOpen, setHotkeyModalOpen] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
@@ -52,6 +56,7 @@ function App() {
     if (saved && THEMES[saved]) setCurrentTheme(saved);
     const savedSize = localStorage.getItem("shelly-font-size");
     if (savedSize) setFontSize(parseInt(savedSize, 10));
+    invoke<string>("get_hotkey").then(setHotkey).catch(() => {});
   }, []);
 
   const handleThemeChange = useCallback((themeId: string) => {
@@ -117,6 +122,8 @@ function App() {
         currentFontSize={fontSize}
         onThemeChange={handleThemeChange}
         onFontSizeChange={handleFontSizeChange}
+        hotkey={hotkey}
+        onOpenHotkeyModal={() => setHotkeyModalOpen(true)}
       />
       <div className="terminal-area">
         <TerminalView
@@ -126,6 +133,13 @@ function App() {
           fontSize={fontSize}
         />
       </div>
+      {hotkeyModalOpen && (
+        <HotkeyCaptureModal
+          initial={hotkey}
+          onSaved={setHotkey}
+          onClose={() => setHotkeyModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

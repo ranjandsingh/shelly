@@ -21,6 +21,8 @@ There are no tests configured yet.
 
 Do not add `Co-Authored-By` lines to commit messages.
 
+Do not commit anything under `docs/superpowers/` (specs, plans, and other workflow artifacts). That directory is gitignored and kept local only.
+
 ## Overview
 
 Shelly is a cross-platform system tray app built with Tauri v2 that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. When the user clicks the tray icon or presses Ctrl+\`, a floating panel appears with embedded terminal sessions (xterm.js frontend, portable-pty backend) that auto-`cd` into detected IDE project directories and launch `claude`.

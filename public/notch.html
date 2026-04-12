@@ -196,25 +196,22 @@
     let isExpanded = false;
 
     document.body.addEventListener('mouseenter', () => {
-      // Cancel any pending shrink
+      // Cancel any pending collapse
       if (shrinkTimer) { clearTimeout(shrinkTimer); shrinkTimer = null; }
 
       if (!isExpanded) {
         isExpanded = true;
         pillEl.classList.add('expanded');
-        if (window.__TAURI__) window.__TAURI__.core.invoke('expand_notch');
       }
       hoverTimer = setTimeout(() => {
         if (window.__TAURI__) window.__TAURI__.core.invoke('show_panel');
-      }, 300);
+      }, 200);
     });
     document.body.addEventListener('mouseleave', () => {
       if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-      // Delay shrink to avoid flicker from resize-triggered mouseleave
       shrinkTimer = setTimeout(() => {
         isExpanded = false;
         pillEl.classList.remove('expanded');
-        if (window.__TAURI__) window.__TAURI__.core.invoke('shrink_notch');
         shrinkTimer = null;
       }, 400);
     });
