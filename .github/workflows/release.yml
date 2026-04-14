@@ -83,9 +83,11 @@ jobs:
             exit 1
           fi
 
-          if [ "$STATE" = "true" ]; then
-            echo "Deleting existing draft release $TAG."
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+          if [ "$STATE" = "missing" ]; then
+            echo "Creating new draft release $TAG."
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "Shelly $TAG" --notes "See the assets below to download and install this version. macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper."
+          elif [ "$STATE" = "true" ]; then
+            echo "Draft release $TAG already exists."
           fi
 
           echo "Force-moving tag $TAG from $REMOTE_SHA to $SHA."
@@ -139,28 +141,34 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ needs.create-tag.outputs.tag }}
-          releaseName: 'Shelly ${{ needs.create-tag.outputs.tag }}'
-          releaseBody: |
-            See the assets below to download and install this version.
-
-            > macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper.
-          releaseDraft: true
-          prerelease: false
-          includeUpdaterJson: false
-          updaterJsonPreferNsis: true
+          # Disabling default tauri-action release creation as we manually upload ALL 
+          # artifacts in the next step to ensure .sig, .zip, and installers are uploaded together.
           args: ${{ matrix.args }}
 
-      - name: Upload .sig files to draft release
+      - name: Upload release assets
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${{ needs.create-tag.outputs.tag }}"
-          find src-tauri/target -type f -name "*.sig" -print | while read -r sig; do
-            echo "Uploading $sig"
-            gh release upload "$TAG" "$sig" --repo "${{ github.repository }}" --clobber
+          
+          # Find all expected release artifacts (installers, zips, tarballs, and signatures) 
+          # from the bundle directories.
+          find src-tauri/target \
+            -type f \
+            \( \
+              -name "*.exe" \
+              -o -name "*.msi" \
+              -o -name "*.dmg" \
+              -o -name "*.tar.gz" \
+              -o -name "*.zip" \
+              -o -name "*.sig" \
+            \) \
+            -print | grep "bundle/" | while read -r asset; do
+            
+            echo "Uploading $asset"
+            gh release upload "$TAG" "$asset" --repo "${{ github.repository }}" --clobber
           done
 
   publish:
@@ -179,22 +187,34 @@ jobs:
           REPO="${{ github.repository }}"
           BASE="https://github.com/$REPO/releases/download/$TAG"
 
-          gh release download "$TAG" --repo "$REPO" --pattern '*.sig' --dir sigs
+          if ! gh release download "$TAG" --repo "$REPO" --pattern '*.sig' --dir sigs 2>/dev/null; then
+            echo "::error::No .sig files found. Cannot generate latest.json. Ensure TAURI_SIGNING_PRIVATE_KEY is set."
+            exit 1
+          fi
 
-          WIN_SIG="sigs/Shelly_${VERSION}_x64-setup.exe.sig"
-          MAC_SIG="sigs/Shelly.app.tar.gz.sig"
-          for f in "$WIN_SIG" "$MAC_SIG"; do
-            [ -f "$f" ] || { echo "::error::Missing $f"; exit 1; }
-          done
+          WIN_SIG=$(ls sigs/*_x64-setup.nsis.zip.sig 2>/dev/null | head -n 1 || true)
+          if [ -z "$WIN_SIG" ]; then
+            WIN_SIG=$(ls sigs/*_x64-setup.exe.sig 2>/dev/null | head -n 1 || true)
+          fi
+          MAC_SIG=$(ls sigs/*tar.gz.sig 2>/dev/null | head -n 1 || true)
+
+          if [ -z "$WIN_SIG" ] || [ -z "$MAC_SIG" ]; then
+            echo "::error::Missing expected .sig files. Found: $(ls sigs/ 2>/dev/null || echo 'none'). Cannot generate latest.json."
+            exit 1
+          fi
+
+          # Extract base names without .sig for the URLs
+          WIN_ASSET=$(basename "${WIN_SIG%.sig}")
+          MAC_ASSET=$(basename "${MAC_SIG%.sig}")
 
           jq -n \
             --arg version "$VERSION" \
             --arg notes "See the release page for details." \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg win_sig "$(cat "$WIN_SIG")" \
-            --arg win_url "$BASE/Shelly_${VERSION}_x64-setup.exe" \
+            --arg win_url "$BASE/$WIN_ASSET" \
             --arg mac_sig "$(cat "$MAC_SIG")" \
-            --arg mac_url "$BASE/Shelly_universal.app.tar.gz" \
+            --arg mac_url "$BASE/$MAC_ASSET" \
             '{
               version: $version,
               notes: $notes,
