@@ -101,9 +101,33 @@ fn capture_previous_foreground(_app: &AppHandle) {}
 #[cfg(windows)]
 fn restore_previous_foreground(app: &AppHandle) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, SetForegroundWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, SetForegroundWindow, GetForegroundWindow};
     let Some(state) = app.try_state::<AppState>() else { return; };
     let Some(prev) = safe_lock(&state.previous_foreground).take() else { return; };
+    
+    // Check if the current foreground window is one of our own.
+    // If it's not, the user has already clicked away to another app,
+    // so we shouldn't steal focus from them.
+    let fg = unsafe { GetForegroundWindow() };
+    if !fg.0.is_null() {
+        let fg_isize = fg.0 as isize;
+        let mut is_shelly = false;
+        for label in ["main", "notch"] {
+            if let Some(win) = app.get_webview_window(label) {
+                if let Ok(h) = win.hwnd() {
+                    if h.0 as isize == fg_isize {
+                        is_shelly = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if !is_shelly {
+            log::info!("restore_previous_foreground: skipping, user clicked away (fg is not Shelly)");
+            return;
+        }
+    }
+
     let hwnd = HWND(prev as *mut _);
     unsafe {
         if IsWindow(hwnd).as_bool() {
@@ -199,7 +223,7 @@ fn do_show_panel(app: &AppHandle) {
     }
 }
 
-fn do_hide_panel(app: &AppHandle) {
+fn do_hide_panel(app: &AppHandle, restore_focus: bool) {
     if let Some(main_win) = app.get_webview_window("main") {
         if !main_win.is_visible().unwrap_or(false) { return; }
         if is_animating(app) { return; }
@@ -240,8 +264,10 @@ fn do_hide_panel(app: &AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
             }
-            // Hand focus back to the app the user was on before opening Shelly.
-            restore_previous_foreground(&handle);
+            // Hand focus back to the app the user was on before opening Shelly (if requested).
+            if restore_focus {
+                restore_previous_foreground(&handle);
+            }
             // Restore notch after panel is fully hidden
             if let Some(notch) = handle.get_webview_window("notch") {
                 let _ = notch.show();
@@ -255,7 +281,7 @@ fn do_hide_panel(app: &AppHandle) {
 fn do_toggle_panel(app: &AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         if main_win.is_visible().unwrap_or(false) {
-            do_hide_panel(app);
+            do_hide_panel(app, true);
         } else {
             do_show_panel(app);
         }
@@ -646,7 +672,7 @@ fn show_panel(app: AppHandle) {
 #[tauri::command]
 fn hide_panel(app: AppHandle) {
     log::info!("CMD hide_panel");
-    do_hide_panel(&app);
+    do_hide_panel(&app, true);
 }
 
 #[tauri::command]
@@ -953,7 +979,7 @@ pub fn run() {
                                     }
                                 }
                                 log::info!("MAIN: lost focus, not pinned -> hiding (delayed)");
-                                do_hide_panel(&h);
+                                do_hide_panel(&h, false);
                             });
                         }
                         tauri::WindowEvent::Resized(size) => {
