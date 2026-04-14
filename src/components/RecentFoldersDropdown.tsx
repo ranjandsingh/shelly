@@ -47,6 +47,7 @@ export function RecentFoldersDropdown({ open, onClose, onOpened, openPaths, colo
 
   return (
     <div className="recent-dropdown" ref={rootRef}>
+      <div className="recent-dropdown-header">Recent</div>
       {items.length === 0 ? (
         <div className="recent-empty">No recent folders</div>
       ) : (
