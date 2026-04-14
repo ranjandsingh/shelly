@@ -282,7 +282,7 @@ export function ThemesModal({
           <input
             type="range"
             min={0}
-            max={50}
+            max={80}
             step={5}
             value={Math.round((1 - opacity) * 100)}
             onChange={(e) => setOpacity(1 - parseInt(e.target.value, 10) / 100)}

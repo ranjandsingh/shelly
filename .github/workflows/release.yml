@@ -147,17 +147,68 @@ jobs:
             > macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper.
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: false
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+      - name: Upload .sig files to draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.create-tag.outputs.tag }}"
+          find src-tauri/target -type f -name "*.sig" -print | while read -r sig; do
+            echo "Uploading $sig"
+            gh release upload "$TAG" "$sig" --repo "${{ github.repository }}" --clobber
+          done
 
   publish:
     needs: [create-tag, build]
     if: needs.create-tag.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Compose and upload latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.create-tag.outputs.tag }}"
+          VERSION="${{ needs.create-tag.outputs.version }}"
+          REPO="${{ github.repository }}"
+          BASE="https://github.com/$REPO/releases/download/$TAG"
+
+          gh release download "$TAG" --repo "$REPO" --pattern '*.sig' --dir sigs
+
+          WIN_SIG="sigs/Shelly_${VERSION}_x64-setup.exe.sig"
+          MAC_SIG="sigs/Shelly.app.tar.gz.sig"
+          for f in "$WIN_SIG" "$MAC_SIG"; do
+            [ -f "$f" ] || { echo "::error::Missing $f"; exit 1; }
+          done
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "See the release page for details." \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg win_sig "$(cat "$WIN_SIG")" \
+            --arg win_url "$BASE/Shelly_${VERSION}_x64-setup.exe" \
+            --arg mac_sig "$(cat "$MAC_SIG")" \
+            --arg mac_url "$BASE/Shelly_universal.app.tar.gz" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "windows-x86_64": { signature: $win_sig, url: $win_url },
+                "darwin-x86_64":  { signature: $mac_sig, url: $mac_url },
+                "darwin-aarch64": { signature: $mac_sig, url: $mac_url }
+              }
+            }' > latest.json
+
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber
+
       - name: Publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release edit "${{ needs.create-tag.outputs.tag }}" \
             --repo "${{ github.repository }}" \
