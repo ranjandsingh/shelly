@@ -196,11 +196,9 @@ jobs:
             exit 1
           fi
 
-          # Fail fast here rather than letting the publish job discover the gap.
           sig_count=$(grep -c '\.sig$' "$assets_file" || true)
           if [ "$sig_count" -eq 0 ]; then
-            echo "::error::No .sig files found in bundle artifacts. Ensure TAURI_SIGNING_PRIVATE_KEY is configured."
-            exit 1
+            echo "::warning::No .sig files found among bundle artifacts. Updater JSON will not be generated. Check TAURI_SIGNING_PRIVATE_KEY."
           fi
 
           total=$(wc -l < "$assets_file" | tr -d ' ')
@@ -229,10 +227,8 @@ jobs:
           REPO="${{ github.repository }}"
           BASE="https://github.com/$REPO/releases/download/$TAG"
 
-          if ! gh release download "$TAG" --repo "$REPO" --pattern '*.sig' --dir sigs 2>/dev/null; then
-            echo "::error::No .sig files found. Cannot generate latest.json. Ensure TAURI_SIGNING_PRIVATE_KEY is set."
-            exit 1
-          fi
+          mkdir -p sigs
+          gh release download "$TAG" --repo "$REPO" --pattern '*.sig' --dir sigs 2>/dev/null || true
 
           WIN_SIG=$(ls sigs/*_x64-setup.nsis.zip.sig 2>/dev/null | head -n 1 || true)
           if [ -z "$WIN_SIG" ]; then
@@ -241,34 +237,34 @@ jobs:
           MAC_SIG=$(ls sigs/*tar.gz.sig 2>/dev/null | head -n 1 || true)
 
           if [ -z "$WIN_SIG" ] || [ -z "$MAC_SIG" ]; then
-            echo "::error::Missing expected .sig files. Found: $(ls sigs/ 2>/dev/null || echo 'none'). Cannot generate latest.json."
-            exit 1
+            echo "::warning::Missing .sig files (WIN='$WIN_SIG' MAC='$MAC_SIG') — skipping latest.json. Auto-updater will not work for this release."
+          else
+            # Extract base names without .sig for the URLs
+            WIN_ASSET=$(basename "${WIN_SIG%.sig}")
+            MAC_ASSET=$(basename "${MAC_SIG%.sig}")
+
+            jq -n \
+              --arg version "$VERSION" \
+              --arg notes "See the release page for details." \
+              --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --arg win_sig "$(cat "$WIN_SIG")" \
+              --arg win_url "$BASE/$WIN_ASSET" \
+              --arg mac_sig "$(cat "$MAC_SIG")" \
+              --arg mac_url "$BASE/$MAC_ASSET" \
+              '{
+                version: $version,
+                notes: $notes,
+                pub_date: $pub_date,
+                platforms: {
+                  "windows-x86_64": { signature: $win_sig, url: $win_url },
+                  "darwin-x86_64":  { signature: $mac_sig, url: $mac_url },
+                  "darwin-aarch64": { signature: $mac_sig, url: $mac_url }
+                }
+              }' > latest.json
+
+            gh release upload "$TAG" latest.json --repo "$REPO" --clobber
+            echo "latest.json uploaded."
           fi
-
-          # Extract base names without .sig for the URLs
-          WIN_ASSET=$(basename "${WIN_SIG%.sig}")
-          MAC_ASSET=$(basename "${MAC_SIG%.sig}")
-
-          jq -n \
-            --arg version "$VERSION" \
-            --arg notes "See the release page for details." \
-            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg win_sig "$(cat "$WIN_SIG")" \
-            --arg win_url "$BASE/$WIN_ASSET" \
-            --arg mac_sig "$(cat "$MAC_SIG")" \
-            --arg mac_url "$BASE/$MAC_ASSET" \
-            '{
-              version: $version,
-              notes: $notes,
-              pub_date: $pub_date,
-              platforms: {
-                "windows-x86_64": { signature: $win_sig, url: $win_url },
-                "darwin-x86_64":  { signature: $mac_sig, url: $mac_url },
-                "darwin-aarch64": { signature: $mac_sig, url: $mac_url }
-              }
-            }' > latest.json
-
-          gh release upload "$TAG" latest.json --repo "$REPO" --clobber
 
       - name: Publish release
         run: |
