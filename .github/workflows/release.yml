@@ -52,16 +52,32 @@ jobs:
 
           REMOTE_SHA=$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}' || true)
 
+          ensure_draft_release() {
+            local tag="$1"
+            local state
+            state=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || echo "missing")
+            if [ "$state" = "missing" ]; then
+              echo "Creating draft release $tag."
+              gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft \
+                --title "Shelly $tag" \
+                --notes "See the assets below to download and install this version. macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper."
+            else
+              echo "Draft release $tag already exists."
+            fi
+          }
+
           if [ -z "$REMOTE_SHA" ]; then
             echo "Tag $TAG does not exist — creating at $SHA."
             git tag -a "$TAG" -m "Release $TAG" "$SHA"
             git push origin "$TAG"
+            ensure_draft_release "$TAG"
             echo "should_build=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           if [ "$REMOTE_SHA" = "$SHA" ]; then
             echo "Tag $TAG already points to $SHA — reusing."
+            ensure_draft_release "$TAG"
             echo "should_build=true" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -85,8 +101,10 @@ jobs:
 
           if [ "$STATE" = "missing" ]; then
             echo "Creating new draft release $TAG."
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "Shelly $TAG" --notes "See the assets below to download and install this version. macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper."
-          elif [ "$STATE" = "true" ]; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "Shelly $TAG" \
+              --notes "See the assets below to download and install this version. macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper."
+          else
             echo "Draft release $TAG already exists."
           fi
 
@@ -130,7 +148,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Updater signing — required to produce latest.json + .sig artifacts
+          # Updater signing — required to produce .sig artifacts
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS signing
@@ -141,8 +159,12 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          # Disabling default tauri-action release creation as we manually upload ALL 
-          # artifacts in the next step to ensure .sig, .zip, and installers are uploaded together.
+          # Point tauri-action at the pre-created draft release so it doesn't race
+          # to create its own. We handle all asset uploads ourselves in the next step
+          # because tauri-action@v0 silently skips .sig files on Tauri v2 builds.
+          tagName: ${{ needs.create-tag.outputs.tag }}
+          releaseDraft: true
+          releaseBody: "See the assets below to download and install this version. macOS builds are currently unsigned — right-click and select Open to bypass Gatekeeper."
           args: ${{ matrix.args }}
 
       - name: Upload release assets
@@ -152,9 +174,11 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ needs.create-tag.outputs.tag }}"
-          
-          # Find all expected release artifacts (installers, zips, tarballs, and signatures) 
-          # from the bundle directories.
+
+          # Collect all bundle artifacts into a temp file first.
+          # This avoids the pipe-subshell problem where failures inside
+          # `find ... | while read` are silently swallowed by bash.
+          assets_file=$(mktemp)
           find src-tauri/target \
             -type f \
             \( \
@@ -165,11 +189,29 @@ jobs:
               -o -name "*.zip" \
               -o -name "*.sig" \
             \) \
-            -print | grep "bundle/" | while read -r asset; do
-            
-            echo "Uploading $asset"
+            | grep "bundle/" > "$assets_file" || true
+
+          if [ ! -s "$assets_file" ]; then
+            echo "::error::No bundle artifacts found under src-tauri/target. The Tauri build may have failed."
+            exit 1
+          fi
+
+          # Fail fast here rather than letting the publish job discover the gap.
+          sig_count=$(grep -c '\.sig$' "$assets_file" || true)
+          if [ "$sig_count" -eq 0 ]; then
+            echo "::error::No .sig files found in bundle artifacts. Ensure TAURI_SIGNING_PRIVATE_KEY is configured."
+            exit 1
+          fi
+
+          total=$(wc -l < "$assets_file" | tr -d ' ')
+          echo "Uploading $total assets ($sig_count .sig files) to $TAG..."
+
+          # Read from the file (not a pipe) so this while loop runs in the current
+          # shell — any gh failure is caught by set -e and aborts the step.
+          while IFS= read -r asset; do
+            echo "  -> $(basename "$asset")"
             gh release upload "$TAG" "$asset" --repo "${{ github.repository }}" --clobber
-          done
+          done < "$assets_file"
 
   publish:
     needs: [create-tag, build]

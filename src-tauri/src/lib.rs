@@ -427,13 +427,16 @@ fn select_session(session_id: String, state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn remove_session(session_id: String, state: State<'_, AppState>) -> Option<String> {
+fn remove_session(session_id: String, state: State<'_, AppState>, app: AppHandle) -> Option<String> {
     log::info!("CMD remove_session: {session_id}");
     if let Ok(id) = Uuid::parse_str(&session_id) {
         state.pty_manager.destroy(id);
     }
     let result = state.session_store.remove_session(&session_id);
     maybe_save_sessions(&state);
+    // Notify notch of the updated session list so it clears any stale status indicators
+    let sessions = state.session_store.get_sessions();
+    let _ = app.emit("sessions-updated", &sessions);
     result
 }
 
@@ -1059,6 +1062,18 @@ pub fn run() {
             if let Some(main_win) = app.get_webview_window("main") {
                 let scale = main_win.scale_factor().unwrap_or(1.0);
                 log::info!("SETUP: display scale factor = {scale}");
+            }
+
+            // Sync auto-start OS registration with saved setting.
+            // This ensures the registry/LaunchAgent entry stays in sync after
+            // reinstalls or updates that may have cleared it.
+            {
+                let auto_start_enabled = app.try_state::<AppState>()
+                    .map(|s| safe_lock(&s.settings).auto_start)
+                    .unwrap_or(false);
+                if let Err(e) = auto_start::set_auto_start(auto_start_enabled) {
+                    log::warn!("SETUP: auto-start sync failed: {e}");
+                }
             }
 
             log::info!("SETUP: complete");

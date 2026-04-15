@@ -32,7 +32,7 @@ Do not commit anything under `docs/superpowers/` (specs, plans, and other workfl
 
 ## Overview
 
-Shelly is a cross-platform system tray app built with Tauri v2 that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. A small "notch" pill is always visible at the top-center; clicking it (or pressing the configured hotkey, default `CmdOrCtrl+\``) animates it into a full floating panel with embedded terminal sessions (xterm.js frontend, portable-pty backend). If a session's working directory contains a `CLAUDE.md` and auto-launch is enabled, the shell runs `claude --continue` after the prompt appears.
+Shelly is a cross-platform system tray app built with Tauri v2 that provides a floating terminal panel at the top-center of the screen, with automatic IDE project detection. A small "notch" pill is always visible at the top-center; clicking it (or pressing the configured hotkey, default ``CmdOrCtrl+` ``) animates it into a full floating panel with embedded terminal sessions (xterm.js frontend, portable-pty backend). If a session's working directory contains a `CLAUDE.md` and auto-launch is enabled, the shell runs `claude --continue` after the prompt appears.
 
 ## Architecture
 
