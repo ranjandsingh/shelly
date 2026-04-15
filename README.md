@@ -1,92 +1,93 @@
 <p align="center">
-  <img src="banner.png" alt="Shelly" width="700" />
+<img src="banner.png" alt="Shelly" width="700" />
 </p>
 
 # Shelly
 
-A floating terminal that stays out of your way until you need it. Multi-session tabs, IDE project detection, themes, and built-in Claude Code status tracking — in a ~5 MB download, on MacOS and Windows.
+I built Shelly because I wanted a terminal that just... gets out of the way. No giant windows, no massive memory footprint. Just a tiny "notch" pill at the top of your screen that springs open when you need it, and hides when you don't.
 
-A small "notch" pill sits at the top of your screen. Click it, or hit your rebindable global hotkey (Ctrl+\` by default), and it springs open into a terminal panel. Open a folder that has a `CLAUDE.md` and Shelly can auto-run `claude --continue` for you.
+It handles multi-session tabs, detects your IDE projects, looks great with custom themes, and tracks your Claude Code status right from the notch. Oh, and the whole thing is roughly a **5 MB download**. Available for both MacOS and Windows.
 
-<sub>The original Shelly was a WPF app for Windows and kept a small footprint; this rewrite keeps it tiny and brings it to MacOS too. Originally inspired by <a href="https://github.com/adamlyttleapps/notchy">Notchy</a>.</sub>
+> **A little backstory:** The original Shelly was a tiny WPF app I built just for Windows (inspired by [Notchy](https://github.com/adamlyttleapps/notchy)). I missed having it on my Mac, so I rewrote the whole thing from the ground up to be cross-platform while keeping the footprint incredibly small.
 
-## Tiny
+-----
 
-The whole install is about **5 MB**. Installer, binary, assets, all of it. It launches fast and doesn't camp on your RAM.
+## 🪶 Tiny by Design
 
-## Features
+Bloat is the enemy. The entire install—binary, assets, everything—is around 5 MB. It launches instantly and won't hog your RAM while sitting in the background.
 
-### Panel
-- Always-on-top floating terminal, toggled by a rebindable global hotkey (<kbd>Ctrl</kbd>+<kbd>&#96;</kbd> by default)
-- Notch pill that can live at the top or bottom of the screen, hugging the real notch on MacOS and playing nice with Windows DPI
-- Pin it open, or let it hide on blur
-- Adjustable transparency with an optional content fade
-- Springy grow/shrink animation from the pill
-- System tray with show/hide, update-check, and quit
+## ✨ Why I love using it (Features)
 
-### Tabs & sessions
-- Multi-session tabs — <kbd>Ctrl</kbd>+<kbd>T</kbd>, <kbd>Ctrl</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>Tab</kbd>
-- Right-click a tab to color it; the color sticks to that folder for next time
-- Duplicate folders get an auto-tinted left strip
-- Rename any tab, or let it default to a capitalized folder name
-- Optional session persistence — last-active tab auto-resumes on restart
-- Recent folders dropdown with an open-indicator dot
+### The Panel
 
-### Terminal
-- Shells auto-detected — PowerShell, cmd, bash, zsh, WSL, and friends
-- Drag a folder in for a new session; drop a file to paste its quoted path
-- Native folder picker with a recent-folder split button
-- Live PTY resize as you drag the panel
+  * **Always there, never in the way:** It’s a floating terminal toggled by a global hotkey (default is <kbd>Ctrl</kbd>+<kbd>&#96;</kbd>).
+  * **The Pill:** A tiny notch that lives at the top (or bottom) of your screen. It hugs the physical notch on Mac and respects Windows DPI scaling.
+  * **Smooth UX:** Springy grow/shrink animations, adjustable transparency, and the option to pin it open or let it hide automatically when you click away.
 
-### Claude Code integration
-- Idle / Working / Waiting / Completed / Interrupted status, with live indicators on the notch
-- Attention flow — the panel pops open when an agent needs you, then auto-hides
-- Auto-launch `claude --continue` in directories with a `CLAUDE.md` (opt-in)
-- IDE project detection from VS Code and JetBrains window titles
-- Sounds on state transitions, with per-state toggles
-- Sleep prevention while a session is working
+### Tabs & Sessions that make sense
 
-### Themes
-- 33 bundled themes, plus VS Code theme import (paste JSON or a URL)
-- Live font size and family
-- Optional hint overlays
+  * **Multi-session:** The usual suspects work perfectly (<kbd>Ctrl</kbd>+<kbd>T</kbd>, <kbd>Ctrl</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>Tab</kbd>).
+  * **Color coding:** Right-click a tab to give it a color. The best part? Shelly remembers that color the next time you open that specific folder.
+  * **Smart tabs:** Duplicate folders get an auto-tinted strip so you don't get lost. You can rename tabs manually, or just let Shelly capitalize the folder name for you.
+  * **Persistence:** Close the app, and your last-active tab will auto-resume right where you left off when you restart.
 
-### Platform & updates
-- MacOS and Windows
-- Single-instance — a second launch just pops the running one
-- Start with OS (opt-in)
-- Auto-update
+### A Proper Terminal
 
-## Install
+  * **Auto-detects your shell:** PowerShell, cmd, bash, zsh, WSL—it knows what you're running.
+  * **Drag & Drop:** Drag a folder in to start a new session, or drop a file to instantly paste its quoted path.
+  * **Live PTY:** Smooth, live terminal resizing as you drag the panel around.
 
-Grab the latest installer from the [Releases](https://github.com/ranjandsingh/shelly/releases) page. About **5 MB**, then you're done.
+### 🤖 Claude Code Integration
 
-## Build from Source
+This is the killer feature for my workflow. If you use Claude Code, Shelly acts as a smart companion:
 
-You'll want [Rust](https://rustup.rs/), [Bun](https://bun.sh/), and your platform's [Tauri prerequisites](https://tauri.app/start/prerequisites/).
+  * **Live Status:** The notch gives you visual indicators if Claude is Idle, Working, Waiting, Completed, or Interrupted.
+  * **Attention Flow:** If an agent needs your input, the panel automatically pops open. Once you're done, it gets out of your way again.
+  * **Auto-run:** Open a folder with a `CLAUDE.md` file, and Shelly can automatically fire up `claude --continue`.
+  * **IDE Context:** It detects what you're working on by reading VS Code and JetBrains window titles.
+  * **No sleeping on the job:** Shelly prevents your computer from going to sleep while a session is actively working.
+
+### Make it Yours
+
+  * Comes with **33 bundled themes**.
+  * Already have a favorite VS Code theme? Just paste the JSON or URL to import it.
+  * Live font size and family adjustments, plus optional hint overlays.
+
+-----
+
+## 🚀 Get Started
+
+No bloated installers here. Just grab the latest ~5 MB release for your OS from the [Releases](https://github.com/ranjandsingh/shelly/releases) page and you're good to go.
+
+## 🛠️ Building from Source
+
+Want to tinker? You'll need [Rust](https://rustup.rs/), [Bun](https://bun.sh/), and your OS's [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
 ```bash
 bun install
-bun run tauri dev        # dev mode, Vite on :1420
-bun run tauri build      # production bundle
-bun run build            # frontend-only check (tsc + Vite)
+bun run tauri dev        # Dev mode (Vite runs on :1420)
+bun run tauri build      # Build the production bundle
+bun run build            # Frontend-only check (tsc + Vite)
 ```
 
-## Tech Stack
+## 💻 Under the Hood
 
-React 19 + TypeScript + [xterm.js](https://xtermjs.org/) on the frontend, Rust + [Tauri v2](https://tauri.app/) + [portable-pty](https://crates.io/crates/portable-pty) on the backend.
+I kept the stack modern and fast:
 
-[CLAUDE.md](CLAUDE.md) has the full architectural breakdown.
+  * **Frontend:** React 19 + TypeScript + [xterm.js](https://xtermjs.org/)
+  * **Backend:** Rust + [Tauri v2](https://tauri.app/) + [portable-pty](https://crates.io/crates/portable-pty)
 
-## Keyboard Shortcuts
+*(If you want to geek out on the architecture, check out the full breakdown in [CLAUDE.md](CLAUDE.md)).*
+
+## ⌨️ Shortcuts
 
 | Action | Shortcut |
-| --- | --- |
-| Show / hide panel | <kbd>Ctrl</kbd>+<kbd>&#96;</kbd> (configurable) |
-| New session | <kbd>Ctrl</kbd>+<kbd>T</kbd> |
-| Close session | <kbd>Ctrl</kbd>+<kbd>W</kbd> |
-| Next / previous tab | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
+| :--- | :--- |
+| **Show / Hide** | <kbd>Ctrl</kbd>+<kbd>&#96;</kbd> *(Configurable)* |
+| **New Session** | <kbd>Ctrl</kbd>+<kbd>T</kbd> |
+| **Close Session** | <kbd>Ctrl</kbd>+<kbd>W</kbd> |
+| **Cycle Tabs** | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 
-## License
+-----
 
-[MIT](LICENSE)
+**License:** [MIT](https://www.google.com/search?q=LICENSE)
