@@ -37,14 +37,12 @@ export function useTerminal(
   // no longer matches aborts at the next await so StrictMode's double-mount
   // (and any rapid tab switch) can't race two concurrent attaches.
   const attachGenRef = useRef<number>(0);
-  // Last cols/rows we sent to Rust for the current session. Used to avoid
-  // spurious SIGWINCH events (bash's readline on same-size resize can wipe
+  // Per-session last cols/rows we sent to Rust. Tracked per-session because
+  // the xterm instance is shared across tabs — resizing while tab A is active
+  // only resizes PTY A, so PTY B stays at its old dims until we reattach to it.
+  // Also avoids spurious SIGWINCH (bash's readline on same-size resize can wipe
   // multi-line prompts down to just the last line).
-  const lastSentSizeRef = useRef<{ sid: string | null; cols: number; rows: number }>({
-    sid: null,
-    cols: 0,
-    rows: 0,
-  });
+  const sessionSizesRef = useRef<Map<string, { cols: number; rows: number }>>(new Map());
   // True while the floating panel is mid-animation (pill growing or shrinking).
   // We do NOT forward resizes during this phase because the pill container fits
   // xterm to ~18x1, which would SIGWINCH the shell into a single-line redraw.
@@ -159,9 +157,9 @@ export function useTerminal(
       const sid = currentSessionRef.current;
       if (!sid) return;
       if (panelAnimatingRef.current) return;
-      const last = lastSentSizeRef.current;
-      if (last.sid === sid && last.cols === term.cols && last.rows === term.rows) return;
-      lastSentSizeRef.current = { sid, cols: term.cols, rows: term.rows };
+      const last = sessionSizesRef.current.get(sid);
+      if (last && last.cols === term.cols && last.rows === term.rows) return;
+      sessionSizesRef.current.set(sid, { cols: term.cols, rows: term.rows });
       resizeTerminal(sid, term.cols, term.rows);
     };
 
@@ -282,12 +280,20 @@ export function useTerminal(
         // PTY was born at exactly these dimensions; seed the dedup cache so
         // the first resize observer fire doesn't re-send the same size and
         // trigger a SIGWINCH-driven prompt redraw.
-        lastSentSizeRef.current = { sid: newSessionId, cols: term.cols, rows: term.rows };
-      } else if (lastSentSizeRef.current.sid !== newSessionId) {
-        // Attaching to a PTY we already created earlier in this session.
-        // Assume it's still at the last size we sent for it; if not, the
-        // observer will correct the drift on the next container resize.
-        lastSentSizeRef.current = { sid: newSessionId, cols: term.cols, rows: term.rows };
+        sessionSizesRef.current.set(newSessionId, { cols: term.cols, rows: term.rows });
+      } else {
+        // Reattaching to an existing PTY. The shared xterm may have been
+        // resized while a different tab was active, so PTY's recorded dims
+        // can be stale. Sync them now — otherwise this shell wraps lines at
+        // the old cols while xterm renders at new cols, which breaks the
+        // display and makes input land at the wrong column positions.
+        const prev = sessionSizesRef.current.get(newSessionId);
+        if (!panelAnimatingRef.current &&
+            (!prev || prev.cols !== term.cols || prev.rows !== term.rows)) {
+          await resizeTerminal(newSessionId, term.cols, term.rows);
+          if (isStale()) return;
+          sessionSizesRef.current.set(newSessionId, { cols: term.cols, rows: term.rows });
+        }
       }
 
       // Pause live emits while we attach. Anything accumulating in output_buffer
@@ -336,6 +342,13 @@ export function useTerminal(
       // between the fetch above and now, then live emits resume.
       await suppressLiveOutput(newSessionId, false);
       if (isStale()) return;
+
+      // xterm.write is async — the replayed buffer and any post-suppress
+      // delta may still be rendering. Queue scrollToBottom via a write
+      // callback so it runs after the pipeline drains. Without this, fit()
+      // and reset() during attach can leave the viewport anchored above the
+      // last line even though the cursor is at the bottom.
+      term.write("", () => { term.scrollToBottom(); });
 
       if (!exists && workDir) {
         // After shell prompt appears, optionally auto-launch claude

@@ -186,11 +186,20 @@ fn do_show_panel(app: &AppHandle) {
                 let _ = win.set_focus();
             }
 
-            let steps: u64 = 18;
-            let total_ms: u64 = 280;
+            // Time-based loop (not step-based). After Windows resume, DWM /
+            // WebView2 can make each set_size+set_position take 50-200ms, which
+            // with a step-based loop stretches the whole animation to seconds.
+            // Here `t` advances by wall-clock so total duration stays bounded —
+            // if frames are slow, we drop frames instead of extending duration.
+            let total_dur = std::time::Duration::from_millis(280);
+            let frame_dur = std::time::Duration::from_millis(16); // ~60fps target
+            let anim_start = std::time::Instant::now();
+            let mut frames: u32 = 0;
 
-            for i in 1..=steps {
-                let t = i as f64 / steps as f64;
+            loop {
+                let elapsed = anim_start.elapsed();
+                let t = (elapsed.as_secs_f64() / total_dur.as_secs_f64()).min(1.0);
+
                 // Spring ease-out with overshoot
                 let ease = if t < 0.8 {
                     let t2 = t / 0.8;
@@ -209,13 +218,24 @@ fn do_show_panel(app: &AppHandle) {
                     let _ = win.set_size(tauri::LogicalSize::new(w, h));
                     let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), y as i32));
                 }
-                std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
+                frames += 1;
+
+                if t >= 1.0 {
+                    break;
+                }
+                let remaining = total_dur.saturating_sub(anim_start.elapsed());
+                std::thread::sleep(frame_dur.min(remaining));
             }
+            let anim_elapsed = anim_start.elapsed();
             // Snap to final
             if let Some(win) = handle.get_webview_window("main") {
                 let _ = win.set_size(tauri::LogicalSize::new(target_w, target_h));
                 let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, target_w), start_y as i32));
             }
+            log::info!(
+                "do_show_panel: grow animation done in {:?} over {} frames (target 280ms)",
+                anim_elapsed, frames
+            );
             let _ = handle.emit("panel-animating", false);
             set_animating(&handle, false);
         });
@@ -235,15 +255,20 @@ fn do_hide_panel(app: &AppHandle, restore_focus: bool) {
         let handle = app.clone();
         std::thread::spawn(move || {
             let top_y = get_top_inset(&handle);
-            let steps: u64 = 12;
-            let total_ms: u64 = 180;
             let sw = get_screen_width(&handle);
             // Shrink back toward pill shape
             let end_w = 140.0_f64;
             let end_h = 38.0_f64;
 
-            for i in 1..=steps {
-                let t = i as f64 / steps as f64;
+            // Time-based loop — same rationale as do_show_panel.
+            let total_dur = std::time::Duration::from_millis(180);
+            let frame_dur = std::time::Duration::from_millis(16);
+            let anim_start = std::time::Instant::now();
+            let mut frames: u32 = 0;
+
+            loop {
+                let elapsed = anim_start.elapsed();
+                let t = (elapsed.as_secs_f64() / total_dur.as_secs_f64()).min(1.0);
                 // Ease-in quadratic
                 let ease = t * t;
 
@@ -254,8 +279,19 @@ fn do_hide_panel(app: &AppHandle, restore_focus: bool) {
                     let _ = win.set_size(tauri::LogicalSize::new(w, h));
                     let _ = win.set_position(tauri::LogicalPosition::new(center_x(sw, w), top_y as i32));
                 }
-                std::thread::sleep(std::time::Duration::from_millis(total_ms / steps));
+                frames += 1;
+
+                if t >= 1.0 {
+                    break;
+                }
+                let remaining = total_dur.saturating_sub(anim_start.elapsed());
+                std::thread::sleep(frame_dur.min(remaining));
             }
+            let anim_elapsed = anim_start.elapsed();
+            log::info!(
+                "do_hide_panel: shrink animation done in {:?} over {} frames (target 180ms)",
+                anim_elapsed, frames
+            );
             // Hide panel, then show notch back
             if let Some(win) = handle.get_webview_window("main") {
                 let _ = win.hide();
