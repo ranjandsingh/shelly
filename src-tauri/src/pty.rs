@@ -57,6 +57,17 @@ impl PtyManager {
 
         let mut cmd = CommandBuilder::new(shell_path);
         cmd.cwd(working_dir);
+        // Advertise xterm-256color so the shell (esp. zsh on macOS) enables
+        // its full line-editor escape sequences. Without TERM set, zsh
+        // launched from a GUI app (no inherited TERM) falls back to a dumb
+        // mode where ↑/↓/←/→ and backspace don't emit cursor-move / erase
+        // sequences back to the terminal, so line editing appears broken
+        // even though keystrokes reach the shell. Windows cmd/PowerShell
+        // ignore TERM, so this is a no-op there.
+        cmd.env("TERM", "xterm-256color");
+        // Hint 24-bit color support so programs like `ls --color`, `bat`,
+        // etc. use truecolor escapes instead of the 256-color palette.
+        cmd.env("COLORTERM", "truecolor");
 
         let _child = pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {e}"))?;

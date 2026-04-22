@@ -1,6 +1,8 @@
 mod auto_start;
 mod display_info;
 mod ide_detector;
+#[cfg(target_os = "macos")]
+mod macos_window;
 mod pty;
 mod session_store;
 mod settings;
@@ -970,6 +972,20 @@ pub fn run() {
                     }
                     let _ = notch.show();
                 });
+            }
+
+            // macOS-only: force WKWebView `drawsBackground = NO` so the window
+            // actually paints with alpha. Without this, setting panel opacity
+            // below 1 just fades the CSS color against an opaque white webview
+            // backing layer instead of letting the desktop show through.
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(main_win) = app.get_webview_window("main") {
+                    macos_window::apply_transparency(&main_win);
+                }
+                if let Some(notch_win) = app.get_webview_window("notch") {
+                    macos_window::apply_transparency(&notch_win);
+                }
             }
 
             // Main window: click-outside-hide (when not pinned)
