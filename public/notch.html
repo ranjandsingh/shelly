@@ -33,7 +33,12 @@
     border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 0 10px;
     margin-top: 4px;
-    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
+    /* Use box-shadow instead of filter: drop-shadow — on macOS WKWebView,
+       drop-shadow creates a compositor layer with an opaque-white backing
+       store that leaks through a transparent window as a rectangular halo
+       around the pill. box-shadow is painted natively, respects border-radius,
+       and doesn't allocate a new layer. */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
