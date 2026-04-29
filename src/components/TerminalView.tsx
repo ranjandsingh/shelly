@@ -15,14 +15,19 @@ export function TerminalView({ sessionId, workingDirectory, theme, fontSize }: T
 
   return (
     <div
-      ref={containerRef}
       style={{
         width: "100%",
         height: "100%",
-        paddingLeft: 6,
         flex: 1,
         minHeight: 0,
+        padding: "0 6px",
+        boxSizing: "border-box",
       }}
-    />
+    >
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100%" }}
+      />
+    </div>
   );
 }

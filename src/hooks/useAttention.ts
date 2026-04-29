@@ -24,6 +24,7 @@ export function useAttention(
   sessionExists: (id: string) => boolean,
 ) {
   const timeoutRef = useRef<number | null>(null);
+  const pendingAttentionSessionRef = useRef<string | null>(null);
   const settingsRef = useRef<AttentionSettings>({
     enabled: true,
     triggerStatuses: ["TaskCompleted", "WaitingForInput"],
@@ -45,6 +46,13 @@ export function useAttention(
   // Track panel visibility via existing event stream.
   useEffect(() => {
     const unlisten = listen<boolean>("panel-visibility", (e) => {
+      if (e.payload && !panelVisibleRef.current) {
+        // Panel transitioning hidden→visible: switch to pending attention session if any.
+        const pending = pendingAttentionSessionRef.current;
+        if (pending && sessionExists(pending)) {
+          selectSession(pending).catch(() => {});
+        }
+      }
       panelVisibleRef.current = !!e.payload;
       if (!e.payload && timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
@@ -54,11 +62,13 @@ export function useAttention(
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
+  }, [selectSession, sessionExists]);
 
-  // Cancel auto-hide timer on any interaction.
+  // Cancel auto-hide timer on any interaction; clear pending attention so we
+  // don't forcibly re-switch tabs after the user has already handled it.
   useEffect(() => {
     const unsub = onSessionInteraction(() => {
+      pendingAttentionSessionRef.current = null;
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -84,6 +94,7 @@ export function useAttention(
       if (activeSessionIdRef.current !== sessionId) {
         await selectSession(sessionId);
       }
+      pendingAttentionSessionRef.current = sessionId;
 
       if (s.stealFocus) {
         // Show panel if hidden.
