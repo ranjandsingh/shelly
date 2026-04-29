@@ -198,22 +198,13 @@ export function useTerminal(
       }
     }).then((fn) => { unlistenAnim = fn as unknown as () => void; });
 
-    term.textarea?.addEventListener("paste", (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }, { capture: true });
-
+    // Ctrl/Cmd+V: let the browser fire the native `paste` event so xterm's
+    // built-in paste handler routes the text through onData → writeInput.
+    // Previous versions intercepted the keydown and called
+    // navigator.clipboard.readText(), which is flaky in WKWebView on macOS.
     term.attachCustomKeyEventHandler((e) => {
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === "v" && e.type === "keydown") {
-        navigator.clipboard.readText().then((text) => {
-          if (currentSessionRef.current) {
-            writeInput(currentSessionRef.current, text);
-          }
-        });
-        return false;
-      }
-      if (mod && e.key === "c" && e.type === "keydown") {
+      if (mod && (e.key === "c" || e.key === "C") && e.type === "keydown") {
         if (term.hasSelection()) {
           navigator.clipboard.writeText(term.getSelection());
           term.clearSelection();

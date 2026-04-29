@@ -34,7 +34,11 @@ function App() {
 
   const [currentTheme, setCurrentTheme] = useState("vs-dark");
   const [fontSize, setFontSize] = useState(11);
-  const [pillShape, setPillShape] = useState(false);
+  // Start in pill shape — the window is created hidden and always grows from
+  // pill on first show. Without this, if the webview finishes loading after
+  // Rust emits `panel-animating: true`, React misses the event and renders
+  // content full-opacity inside a pill-sized window, causing a flicker.
+  const [pillShape, setPillShape] = useState(true);
   const [hotkey, setHotkey] = useState("CmdOrCtrl+`");
   const [hotkeyModalOpen, setHotkeyModalOpen] = useState(false);
   const [panelOpacity, setPanelOpacity] = useState(1);

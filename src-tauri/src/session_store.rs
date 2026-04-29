@@ -74,7 +74,17 @@ impl SessionStore {
         };
 
         let mut sessions = safe_lock(&self.sessions);
-        sessions.push(session.clone());
+        // Group same-repo tabs together: insert after the last session that
+        // shares the same working directory so existing tabs stay left and
+        // the new tab is rightmost in the group, or append if no match exists.
+        let insert_pos = sessions
+            .iter()
+            .rposition(|s| s.working_directory == wd)
+            .map(|i| i + 1);
+        match insert_pos {
+            Some(pos) => sessions.insert(pos, session.clone()),
+            None => sessions.push(session.clone()),
+        };
 
         let mut active = safe_lock(&self.active_session_id);
         if active.is_none() {
