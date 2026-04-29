@@ -79,7 +79,7 @@ impl SessionStore {
         // the new tab is rightmost in the group, or append if no match exists.
         let insert_pos = sessions
             .iter()
-            .rposition(|s| s.working_directory == wd)
+            .rposition(|s| s.working_directory == session.working_directory)
             .map(|i| i + 1);
         match insert_pos {
             Some(pos) => sessions.insert(pos, session.clone()),

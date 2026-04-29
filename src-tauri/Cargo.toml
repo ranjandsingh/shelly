@@ -1,6 +1,6 @@
 [package]
 name = "shelly"
-version = "0.2.12"
+version = "0.2.13"
 description = "A floating terminal panel with IDE project detection"
 authors = ["Ranjan Singh"]
 edition = "2021"
