@@ -24,7 +24,7 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--panel-bg);
+  background: transparent;
   font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-weight: 500;
   font-size: 13px;

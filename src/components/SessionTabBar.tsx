@@ -115,6 +115,21 @@ export function SessionTabBar({
     // Re-check when sessions change
   }, [sessions.length, updateScrollState]);
 
+  // --- Scroll active tab into view when activeSessionId changes ---
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    const activeEl = scroll?.querySelector('.tabbar-tab.active') as HTMLElement | null;
+    if (!activeEl || !scroll) return;
+    const tabLeft = activeEl.offsetLeft;
+    const tabRight = activeEl.offsetLeft + activeEl.offsetWidth;
+    if (tabLeft < scroll.scrollLeft) {
+      scroll.scrollLeft = tabLeft - 8;
+    } else if (tabRight > scroll.scrollLeft + scroll.clientWidth) {
+      scroll.scrollLeft = tabRight - scroll.clientWidth + 8;
+    }
+    setTimeout(updateScrollState, 100);
+  }, [activeSessionId, updateScrollState]);
+
   // --- Rotate hint text every 12s ---
   useEffect(() => {
     if (!showHints) return;
