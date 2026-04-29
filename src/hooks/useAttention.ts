@@ -33,6 +33,13 @@ export function useAttention(
   });
   const panelVisibleRef = useRef<boolean>(true);
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
+  // Stable refs so event listeners registered with [] deps always see the
+  // latest callbacks without needing to re-register on every sessions change.
+  const selectSessionRef = useRef(selectSession);
+  const sessionExistsRef = useRef(sessionExists);
+
+  useEffect(() => { selectSessionRef.current = selectSession; }, [selectSession]);
+  useEffect(() => { sessionExistsRef.current = sessionExists; }, [sessionExists]);
 
   // Load settings once + refresh on any change command (simple approach: poll on mount).
   useEffect(() => {
@@ -49,8 +56,8 @@ export function useAttention(
       if (e.payload && !panelVisibleRef.current) {
         // Panel transitioning hidden→visible: switch to pending attention session if any.
         const pending = pendingAttentionSessionRef.current;
-        if (pending && sessionExists(pending)) {
-          selectSession(pending).catch(() => {});
+        if (pending && sessionExistsRef.current(pending)) {
+          selectSessionRef.current(pending).catch(() => {});
         }
       }
       panelVisibleRef.current = !!e.payload;
@@ -62,7 +69,7 @@ export function useAttention(
     return () => {
       unlisten.then((f) => f());
     };
-  }, [selectSession, sessionExists]);
+  }, []);
 
   // Cancel auto-hide timer on any interaction; clear pending attention so we
   // don't forcibly re-switch tabs after the user has already handled it.
@@ -86,15 +93,14 @@ export function useAttention(
   useEffect(() => {
     const unlisten = listen<AttentionEvent>("attention-required", async (e) => {
       const { sessionId } = e.payload;
-      if (!sessionExists(sessionId)) return;
+      if (!sessionExistsRef.current(sessionId)) return;
 
       const s = settingsRef.current;
 
       // Switch tab if needed.
       if (activeSessionIdRef.current !== sessionId) {
-        await selectSession(sessionId);
+        await selectSessionRef.current(sessionId);
       }
-      pendingAttentionSessionRef.current = sessionId;
 
       if (s.stealFocus) {
         // Show panel if hidden.
@@ -103,6 +109,10 @@ export function useAttention(
         }
         // Focus terminal after a frame so layout is ready.
         requestAnimationFrame(() => focusActiveTerminal());
+      } else {
+        // stealFocus is off — panel won't auto-show. Store the session so that
+        // when the user manually opens the panel, it lands on the right tab.
+        pendingAttentionSessionRef.current = sessionId;
       }
 
       // Reset and start auto-hide timer.
@@ -122,5 +132,5 @@ export function useAttention(
         timeoutRef.current = null;
       }
     };
-  }, [selectSession, sessionExists]);
+  }, []);
 }

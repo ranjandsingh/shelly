@@ -18,8 +18,6 @@ export function TerminalView({ sessionId, workingDirectory, theme, fontSize }: T
       style={{
         width: "100%",
         height: "100%",
-        flex: 1,
-        minHeight: 0,
         padding: "0 6px",
         boxSizing: "border-box",
       }}

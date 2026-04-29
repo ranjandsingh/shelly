@@ -127,7 +127,8 @@ export function SessionTabBar({
     } else if (tabRight > scroll.scrollLeft + scroll.clientWidth) {
       scroll.scrollLeft = tabRight - scroll.clientWidth + 8;
     }
-    setTimeout(updateScrollState, 100);
+    const id = setTimeout(updateScrollState, 100);
+    return () => clearTimeout(id);
   }, [activeSessionId, updateScrollState]);
 
   // --- Rotate hint text every 12s ---
