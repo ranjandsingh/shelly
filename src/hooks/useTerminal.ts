@@ -74,11 +74,23 @@ export function useTerminal(
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    // Detect platform once for paste handling (see attachCustomKeyEventHandler below).
+    const isMac = /mac/i.test(navigator.platform) || /Mac/.test(navigator.userAgent);
+
     let opened = false;
     const tryOpen = () => {
       if (opened) return;
       if (container.offsetWidth > 0 && container.offsetHeight > 0) {
         term.open(container);
+        // term.textarea is only populated after open() — register the paste blocker here.
+        // On Windows/Linux we block the native paste event to prevent xterm's built-in
+        // handler from double-pasting alongside our Ctrl+V → clipboard.readText() path.
+        if (!isMac) {
+          term.textarea?.addEventListener("paste", (e) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }, { capture: true });
+        }
         fitAddon.fit();
         opened = true;
         registerTerminalFocus(() => term.focus());
@@ -198,21 +210,6 @@ export function useTerminal(
       }
     }).then((fn) => { unlistenAnim = fn as unknown as () => void; });
 
-    // Paste strategy differs by platform:
-    // - macOS (WKWebView): navigator.clipboard.readText() is flaky; let Cmd+V
-    //   trigger the browser's native paste event which xterm handles natively.
-    // - Windows/Linux (WebView2): the native paste event is unreliable; intercept
-    //   Ctrl+V ourselves and use clipboard.readText(), blocking the paste event
-    //   to avoid a double-paste from xterm's built-in handler.
-    const isMac = /mac/i.test(navigator.platform) || /Mac/.test(navigator.userAgent);
-
-    if (!isMac) {
-      term.textarea?.addEventListener("paste", (e) => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-      }, { capture: true });
-    }
-
     term.attachCustomKeyEventHandler((e) => {
       const mod = e.ctrlKey || e.metaKey;
       if (mod && (e.key === "c" || e.key === "C") && e.type === "keydown") {
@@ -223,11 +220,9 @@ export function useTerminal(
         }
       }
       if (!isMac && e.ctrlKey && (e.key === "v" || e.key === "V") && e.type === "keydown") {
-        navigator.clipboard.readText().then((text) => {
-          if (currentSessionRef.current) {
-            writeInput(currentSessionRef.current, text);
-          }
-        });
+        navigator.clipboard.readText()
+          .then((text) => { if (currentSessionRef.current) writeInput(currentSessionRef.current, text); })
+          .catch((err) => console.warn("[paste] clipboard.readText failed:", err));
         return false;
       }
       return true;
