@@ -5,6 +5,7 @@ import { SettingsMenu } from "./SettingsMenu";
 import { RecentFoldersDropdown } from "./RecentFoldersDropdown";
 import { resolveTabColor, NAMED_COLORS, PALETTE_ORDER } from "../lib/tabColor";
 import { getPathColors, setPathColor } from "../lib/ipc";
+import { ProcessIcon } from "./ProcessIcon";
 
 interface SessionTabBarProps {
   sessions: TerminalSession[];
@@ -53,6 +54,7 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   Interrupted: <span className="st-dot red" />,
   Exited: <span className="st-dot red" />,
 };
+
 
 export function SessionTabBar({
   sessions,
@@ -256,6 +258,7 @@ export function SessionTabBar({
               return color ? <span className="tab-color-strip" style={{ background: color }} /> : null;
             })()}
             {STATUS_ICON[s.status] || STATUS_ICON.Idle}
+            {s.runningProcess && <ProcessIcon process={s.runningProcess} size={14} />}
             {renamingId === s.id ? (
               <input
                 ref={renameInputRef}

@@ -214,6 +214,12 @@ html, body, #root {
 }
 .st-chk { color: #4caf50; font-size: 11px; font-weight: bold; line-height: 1; flex-shrink: 0; }
 
+/* Process icon (node, bun, claude, etc.) */
+.proc-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
 /* Generic tab bar button */
 .tabbar-btn {
   background: none;

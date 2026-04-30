@@ -23,6 +23,7 @@ struct PtyInstance {
     suppress_live: bool,
     shutdown: Arc<AtomicBool>,
     app: AppHandle,
+    shell_pid: Option<u32>,
 }
 
 pub struct PtyManager {
@@ -69,8 +70,9 @@ impl PtyManager {
         // etc. use truecolor escapes instead of the 256-color palette.
         cmd.env("COLORTERM", "truecolor");
 
-        let _child = pair.slave.spawn_command(cmd)
+        let child = pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {e}"))?;
+        let shell_pid = child.process_id();
 
         drop(pair.slave);
 
@@ -88,6 +90,7 @@ impl PtyManager {
             suppress_live: false,
             shutdown: shutdown.clone(),
             app: app.clone(),
+            shell_pid,
         }));
 
         {
@@ -258,5 +261,12 @@ impl PtyManager {
     pub fn has_terminal(&self, session_id: Uuid) -> bool {
         let instances = safe_lock(&self.instances);
         instances.contains_key(&session_id)
+    }
+
+    pub fn get_shell_pid(&self, session_id: Uuid) -> Option<u32> {
+        let instances = safe_lock(&self.instances);
+        let instance = instances.get(&session_id)?;
+        let inst = safe_lock(instance);
+        inst.shell_pid
     }
 }
