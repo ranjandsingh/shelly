@@ -12,6 +12,9 @@ pub struct StatusParser {
     last_working_time: Mutex<HashMap<String, Instant>>,
     /// Pending sound confirmations: session_id -> (status, when_set)
     pending_sounds: Mutex<HashMap<String, (TerminalStatus, Instant)>>,
+    /// Confidence gate for noisy polling transitions.
+    /// session_id -> (candidate_status, consecutive_hits)
+    pending_status_confidence: Mutex<HashMap<String, (TerminalStatus, u8)>>,
 }
 
 impl StatusParser {
@@ -20,6 +23,7 @@ impl StatusParser {
             completion_pattern: Regex::new(r"[✢✳✶✻✽].*\bfor\b.*\d+[ms]").unwrap(),
             last_working_time: Mutex::new(HashMap::new()),
             pending_sounds: Mutex::new(HashMap::new()),
+            pending_status_confidence: Mutex::new(HashMap::new()),
         }
     }
 
@@ -37,15 +41,18 @@ impl StatusParser {
             None => return,
         };
 
-        // Completion message from Working state
-        if session.status == TerminalStatus::Working && self.completion_pattern.is_match(&text) {
+        // Completion message from Working state (only when Claude is actually running)
+        if session.claude_running
+            && session.status == TerminalStatus::Working
+            && self.completion_pattern.is_match(&text)
+        {
             log::info!("StatusParser: completion detected in raw output");
             self.set_status(session_id, TerminalStatus::TaskCompleted, store, app);
             return;
         }
 
-        // Start of working from Idle
-        if session.status == TerminalStatus::Idle {
+        // Start of working from Idle (only when Claude is actually running)
+        if session.claude_running && session.status == TerminalStatus::Idle {
             let lower = text.to_lowercase();
             if lower.contains("esc to interrupt")
                 || lower.contains("clauding")
@@ -69,8 +76,62 @@ impl StatusParser {
             None => return,
         };
 
-        let new_status = self.classify_visible_text(visible_text);
+        let mut new_status = self.classify_visible_text(visible_text);
+        new_status = self.apply_runtime_gate(new_status, session.claude_running);
+        new_status = self.apply_confidence_gate(session_id, new_status, &session.status);
         self.update_status(session_id, new_status, &session.status, store, app);
+    }
+
+    fn apply_runtime_gate(&self, status: TerminalStatus, claude_running: bool) -> TerminalStatus {
+        if claude_running {
+            return status;
+        }
+        match status {
+            TerminalStatus::Working
+            | TerminalStatus::WaitingForInput
+            | TerminalStatus::TaskCompleted => TerminalStatus::Idle,
+            _ => status,
+        }
+    }
+
+    fn apply_confidence_gate(
+        &self,
+        session_id: &str,
+        candidate: TerminalStatus,
+        old_status: &TerminalStatus,
+    ) -> TerminalStatus {
+        // Only gate noisy transitions. Working and Interrupted should remain responsive.
+        if !matches!(
+            candidate,
+            TerminalStatus::WaitingForInput | TerminalStatus::TaskCompleted
+        ) {
+            safe_lock(&self.pending_status_confidence).remove(session_id);
+            return candidate;
+        }
+
+        if candidate == *old_status {
+            safe_lock(&self.pending_status_confidence).remove(session_id);
+            return candidate;
+        }
+
+        let mut pending = safe_lock(&self.pending_status_confidence);
+        let entry = pending
+            .entry(session_id.to_string())
+            .or_insert((candidate.clone(), 0));
+
+        if entry.0 == candidate {
+            entry.1 = entry.1.saturating_add(1);
+        } else {
+            *entry = (candidate.clone(), 1);
+        }
+
+        // Need 2 consecutive polls before committing.
+        if entry.1 >= 2 {
+            pending.remove(session_id);
+            candidate
+        } else {
+            old_status.clone()
+        }
     }
 
     fn classify_visible_text(&self, text: &str) -> TerminalStatus {
@@ -171,11 +232,11 @@ impl StatusParser {
             return;
         }
 
-        // Sticky Working (2s)
+        // Sticky Working (4s)
         if *old_status == TerminalStatus::Working && new_status == TerminalStatus::Idle {
             let times = safe_lock(&self.last_working_time);
             if let Some(last) = times.get(session_id) {
-                if last.elapsed() < Duration::from_secs(2) {
+                if last.elapsed() < Duration::from_secs(4) {
                     return;
                 }
             }

@@ -1,4 +1,5 @@
 mod auto_start;
+mod claude_detector;
 mod display_info;
 mod ide_detector;
 #[cfg(target_os = "macos")]
@@ -17,6 +18,8 @@ mod util;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use uuid::Uuid;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 use pty::PtyManager;
 use session_store::{SessionStore, TerminalSession};
@@ -28,6 +31,7 @@ struct AppState {
     pty_manager: PtyManager,
     session_store: SessionStore,
     status_parser: StatusParser,
+    claude_detector: claude_detector::ClaudeDetector,
     settings: Mutex<settings::AppSettings>,
     default_shell: Mutex<String>,
     is_pinned: Mutex<bool>,
@@ -39,6 +43,13 @@ struct AppState {
     display_info: Mutex<display_info::DisplayInfo>,
     #[cfg(windows)]
     previous_foreground: Mutex<Option<isize>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TerminalOutputEventPayload {
+    session_id: String,
+    data: String,
 }
 
 const PANEL_W: f64 = 720.0;
@@ -589,10 +600,25 @@ fn handle_dropped_paths(paths: &[std::path::PathBuf], app: &AppHandle) {
 fn parse_visible_text(session_id: String, text: String, state: State<'_, AppState>, app: AppHandle) {
     // Wrap in catch_unwind so a panic in status parsing can never kill the process
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let runtime_changed = refresh_claude_runtime_for_session(&state, &session_id);
         state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
         // Check for pending sound notifications (1.5s confirmation)
         state.status_parser.check_pending_sounds(&state.session_store);
+        if runtime_changed {
+            let _ = app.emit("sessions-updated", &state.session_store.get_sessions());
+        }
     }));
+}
+
+fn refresh_claude_runtime_for_session(state: &AppState, session_id: &str) -> bool {
+    let Ok(uuid) = Uuid::parse_str(session_id) else {
+        return false;
+    };
+    let shell_pid = state.pty_manager.get_shell_pid(uuid);
+    let runtime = state.claude_detector.detect_for_shell_pid(shell_pid);
+    state
+        .session_store
+        .update_claude_runtime(session_id, runtime.running, runtime.claude_pid)
 }
 
 // --- Settings commands ---
@@ -918,6 +944,7 @@ pub fn run() {
             pty_manager: PtyManager::new(),
             session_store,
             status_parser: StatusParser::new(),
+            claude_detector: claude_detector::ClaudeDetector::new(),
             settings: Mutex::new(app_settings),
             default_shell: Mutex::new(default_shell),
             is_pinned: Mutex::new(false),
@@ -1108,6 +1135,35 @@ pub fn run() {
                         }
                     }
                 }
+            });
+
+            // Raw PTY status path: parse every emitted chunk so status can react
+            // before viewport polling catches up.
+            let h_raw = app.handle().clone();
+            app.listen("terminal-output", move |event| {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let Ok(payload) = serde_json::from_str::<TerminalOutputEventPayload>(event.payload()) else {
+                        return;
+                    };
+                    let Some(state) = h_raw.try_state::<AppState>() else {
+                        return;
+                    };
+
+                    let runtime_changed = refresh_claude_runtime_for_session(&state, &payload.session_id);
+                    let Ok(raw) = BASE64.decode(payload.data.as_bytes()) else {
+                        return;
+                    };
+                    state.status_parser.parse_raw_output(
+                        &payload.session_id,
+                        &raw,
+                        &state.session_store,
+                        &h_raw,
+                    );
+                    state.status_parser.check_pending_sounds(&state.session_store);
+                    if runtime_changed {
+                        let _ = h_raw.emit("sessions-updated", &state.session_store.get_sessions());
+                    }
+                }));
             });
 
             // Log display scale for debugging
