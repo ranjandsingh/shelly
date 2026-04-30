@@ -11,6 +11,9 @@ export interface TerminalSession {
   status: string;
   isActive: boolean;
   skipAutoLaunch: boolean;
+  claudeRunning: boolean;
+  claudePid: number | null;
+  runningProcess: string | null;
 }
 
 export function useSessionStore() {
@@ -71,6 +74,28 @@ export function useSessionStore() {
         prev.map((s) =>
           s.id === exitedId ? { ...s, status: "Exited", hasStarted: false } : s
         )
+      );
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  // Listen for sessions-updated (emitted when claude/process runtime changes)
+  useEffect(() => {
+    const unlisten = listen<TerminalSession[]>("sessions-updated", (event) => {
+      const updated = event.payload;
+      setSessions((prev) =>
+        prev.map((s) => {
+          const u = updated.find((u) => u.id === s.id);
+          if (!u) return s;
+          return {
+            ...s,
+            claudeRunning: u.claudeRunning,
+            claudePid: u.claudePid,
+            runningProcess: u.runningProcess,
+          };
+        })
       );
     });
     return () => {

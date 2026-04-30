@@ -28,6 +28,8 @@ pub struct TerminalSession {
     #[serde(default)]
     pub claude_pid: Option<u32>,
     #[serde(default)]
+    pub running_process: Option<String>,
+    #[serde(default)]
     pub popped_for_status: bool,
 }
 
@@ -76,6 +78,7 @@ impl SessionStore {
             skip_auto_launch: false,
             claude_running: false,
             claude_pid: None,
+            running_process: None,
             popped_for_status: false,
         };
 
@@ -178,6 +181,7 @@ impl SessionStore {
             s.popped_for_status = false;
             s.claude_running = false;
             s.claude_pid = None;
+            s.running_process = None;
             // Only the previously active session should auto-launch claude
             if s.is_active {
                 active_id = Some(s.id.clone());
@@ -234,14 +238,21 @@ impl SessionStore {
         false
     }
 
-    pub fn update_claude_runtime(&self, session_id: &str, running: bool, pid: Option<u32>) -> bool {
+    pub fn update_claude_runtime(
+        &self,
+        session_id: &str,
+        running: bool,
+        pid: Option<u32>,
+        running_process: Option<String>,
+    ) -> bool {
         let mut sessions = safe_lock(&self.sessions);
         if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
-            if s.claude_running == running && s.claude_pid == pid {
+            if s.claude_running == running && s.claude_pid == pid && s.running_process == running_process {
                 return false;
             }
             s.claude_running = running;
             s.claude_pid = pid;
+            s.running_process = running_process;
             return true;
         }
         false

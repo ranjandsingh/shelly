@@ -618,7 +618,7 @@ fn refresh_claude_runtime_for_session(state: &AppState, session_id: &str) -> boo
     let runtime = state.claude_detector.detect_for_shell_pid(shell_pid);
     state
         .session_store
-        .update_claude_runtime(session_id, runtime.running, runtime.claude_pid)
+        .update_claude_runtime(session_id, runtime.running, runtime.claude_pid, runtime.running_process)
 }
 
 // --- Settings commands ---
