@@ -59,6 +59,26 @@ impl StatusParser {
                 || lower.contains("thinking with")
             {
                 self.set_status(session_id, TerminalStatus::Working, store, app);
+                return;
+            }
+        }
+
+        // WaitingForInput — parse_visible_text only runs for the active tab, so
+        // background sessions must detect this here from raw output.
+        // Restrict to Working→WaitingForInput only (mirrors the update_status guard that
+        // blocks Idle→WaitingForInput to avoid false-positives from leftover session text).
+        if session.claude_running && session.status == TerminalStatus::Working {
+            let lower = text.to_lowercase();
+            if lower.contains("esc to cancel")
+                || lower.contains("do you want to proceed")
+                || lower.contains("would you like to proceed")
+                || lower.contains("yes / no")
+                || lower.contains("(y)es/(n)o")
+                || lower.contains("keep planning")
+                || lower.contains("auto-accept edits")
+            {
+                self.set_status(session_id, TerminalStatus::WaitingForInput, store, app);
+                return;
             }
         }
     }

@@ -17,6 +17,7 @@ interface AttentionEvent {
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+const ACTIVE_WORK_WINDOW_MS = 10_000;
 
 export function useAttention(
   activeSessionId: string | null,
@@ -33,6 +34,7 @@ export function useAttention(
   });
   const panelVisibleRef = useRef<boolean>(true);
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
+  const lastInteractionTimeRef = useRef<number>(0);
   // Stable refs so event listeners registered with [] deps always see the
   // latest callbacks without needing to re-register on every sessions change.
   const selectSessionRef = useRef(selectSession);
@@ -71,10 +73,10 @@ export function useAttention(
     };
   }, []);
 
-  // Cancel auto-hide timer on any interaction; clear pending attention so we
-  // don't forcibly re-switch tabs after the user has already handled it.
+  // Track last interaction time; cancel auto-hide and clear pending on any interaction.
   useEffect(() => {
     const unsub = onSessionInteraction(() => {
+      lastInteractionTimeRef.current = Date.now();
       pendingAttentionSessionRef.current = null;
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
@@ -96,33 +98,42 @@ export function useAttention(
       if (!sessionExistsRef.current(sessionId)) return;
 
       const s = settingsRef.current;
+      const isExpanded = panelVisibleRef.current;
+      const userIsActive = (Date.now() - lastInteractionTimeRef.current) < ACTIVE_WORK_WINDOW_MS;
 
-      // Switch tab if needed.
+      if (isExpanded) {
+        // Panel is already open — the status icon on the inactive tab signals the
+        // alert without causing a tab-switch flicker. Don't touch tab focus.
+        return;
+      }
+
+      if (userIsActive) {
+        // User is actively working; store the session so opening the panel later
+        // lands on the right tab, but don't interrupt them.
+        pendingAttentionSessionRef.current = sessionId;
+        return;
+      }
+
+      // Panel hidden + user idle: switch to the alerting session.
       if (activeSessionIdRef.current !== sessionId) {
         await selectSessionRef.current(sessionId);
       }
 
       if (s.stealFocus) {
-        // Show panel if hidden.
-        if (!panelVisibleRef.current) {
-          await invoke("show_panel").catch(() => {});
-        }
-        // Focus terminal after a frame so layout is ready.
+        await invoke("show_panel").catch(() => {});
         requestAnimationFrame(() => focusActiveTerminal());
+
+        // Reset and start auto-hide timer.
+        if (timeoutRef.current !== null) {
+          window.clearTimeout(timeoutRef.current);
+        }
+        timeoutRef.current = window.setTimeout(() => {
+          timeoutRef.current = null;
+          invoke("hide_panel").catch(() => {});
+        }, s.autoHideTimeoutMs || DEFAULT_TIMEOUT_MS);
       } else {
-        // stealFocus is off — panel won't auto-show. Store the session so that
-        // when the user manually opens the panel, it lands on the right tab.
         pendingAttentionSessionRef.current = sessionId;
       }
-
-      // Reset and start auto-hide timer.
-      if (timeoutRef.current !== null) {
-        window.clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = window.setTimeout(() => {
-        timeoutRef.current = null;
-        invoke("hide_panel").catch(() => {});
-      }, s.autoHideTimeoutMs || DEFAULT_TIMEOUT_MS);
     });
 
     return () => {
