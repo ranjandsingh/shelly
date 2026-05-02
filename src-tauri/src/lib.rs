@@ -41,6 +41,8 @@ struct AppState {
     animating: Mutex<bool>,
     panel_size: Mutex<(f64, f64)>,
     display_info: Mutex<display_info::DisplayInfo>,
+    sleep_prevention: sleep_prevention::SleepPrevention,
+    waiting_input_since: Mutex<std::collections::HashMap<String, std::time::Instant>>,
     #[cfg(windows)]
     previous_foreground: Mutex<Option<isize>>,
 }
@@ -483,6 +485,7 @@ fn remove_session(session_id: String, state: State<'_, AppState>, app: AppHandle
     }
     let result = state.session_store.remove_session(&session_id);
     maybe_save_sessions(&state);
+    sync_sleep_prevention(&state);
     // Notify notch of the updated session list so it clears any stale status indicators
     let sessions = state.session_store.get_sessions();
     let _ = app.emit("sessions-updated", &sessions);
@@ -604,6 +607,7 @@ fn parse_visible_text(session_id: String, text: String, state: State<'_, AppStat
         state.status_parser.parse_visible_text(&session_id, &text, &state.session_store, &app);
         // Check for pending sound notifications (1.5s confirmation)
         state.status_parser.check_pending_sounds(&state.session_store);
+        sync_sleep_prevention(&state);
         if runtime_changed {
             let _ = app.emit("sessions-updated", &state.session_store.get_sessions());
         }
@@ -619,6 +623,54 @@ fn refresh_claude_runtime_for_session(state: &AppState, session_id: &str) -> boo
     state
         .session_store
         .update_claude_runtime(session_id, runtime.running, runtime.claude_pid, runtime.running_process)
+}
+
+/// How long WaitingForInput keeps the wake-lock before we conclude the user is away.
+const WAITING_INPUT_WAKE_SECS: u64 = 10 * 60;
+
+/// Keep the device awake while Claude is actively working in any session.
+/// Allows sleep once all sessions are finished, idle, or have been waiting for
+/// input for more than WAITING_INPUT_WAKE_SECS (user is not present).
+///
+/// IMPORTANT: must NOT be called while any SessionStore internal lock is held,
+/// because get_sessions() acquires that lock internally.
+fn sync_sleep_prevention(state: &AppState) {
+    use session_store::TerminalStatus;
+    let sessions = state.session_store.get_sessions();
+    let mut waiting_since = safe_lock(&state.waiting_input_since);
+    let now = std::time::Instant::now();
+
+    // Track sessions currently in WaitingForInput with claude running
+    let active_waiting: std::collections::HashSet<String> = sessions
+        .iter()
+        .filter(|s| s.claude_running && s.status == TerminalStatus::WaitingForInput)
+        .map(|s| s.id.clone())
+        .collect();
+    waiting_since.retain(|id, _| active_waiting.contains(id));
+    for id in &active_waiting {
+        waiting_since.entry(id.clone()).or_insert(now);
+    }
+
+    let needs_wake = sessions.iter().any(|s| {
+        if !s.claude_running {
+            return false;
+        }
+        match &s.status {
+            TerminalStatus::Working => true,
+            TerminalStatus::WaitingForInput => waiting_since
+                .get(&s.id)
+                .map(|t| t.elapsed() < std::time::Duration::from_secs(WAITING_INPUT_WAKE_SECS))
+                .unwrap_or(true),
+            _ => false,
+        }
+    });
+    drop(waiting_since);
+
+    if needs_wake {
+        state.sleep_prevention.prevent_sleep();
+    } else {
+        state.sleep_prevention.allow_sleep();
+    }
 }
 
 // --- Settings commands ---
@@ -851,6 +903,7 @@ fn mark_session_interacted(session_id: String, state: State<'_, AppState>, app: 
             }),
         );
         let _ = app.emit("sessions-updated", &state.session_store.get_sessions());
+        sync_sleep_prevention(&state);
     }
 }
 
@@ -954,6 +1007,8 @@ pub fn run() {
             animating: Mutex::new(false),
             panel_size: Mutex::new((PANEL_W, PANEL_H)),
             display_info: Mutex::new(display_info::DisplayInfo::default()),
+            sleep_prevention: sleep_prevention::SleepPrevention::new(),
+            waiting_input_since: Mutex::new(std::collections::HashMap::new()),
             #[cfg(windows)]
             previous_foreground: Mutex::new(None),
         })
@@ -1160,6 +1215,7 @@ pub fn run() {
                         &h_raw,
                     );
                     state.status_parser.check_pending_sounds(&state.session_store);
+                    sync_sleep_prevention(&state);
                     if runtime_changed {
                         let _ = h_raw.emit("sessions-updated", &state.session_store.get_sessions());
                     }
