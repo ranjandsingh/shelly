@@ -120,8 +120,19 @@ export function SessionTabBar({
   // --- Scroll active tab into view when activeSessionId changes ---
   useEffect(() => {
     const scroll = scrollRef.current;
-    const activeEl = scroll?.querySelector('.tabbar-tab.active') as HTMLElement | null;
-    if (!activeEl || !scroll) return;
+    if (!scroll) return;
+    // When the first tab is active there's nothing to its left — snap fully to
+    // the start so its whole title shows and the left arrow disappears.
+    const activeIdx = sessions.findIndex((s) => s.id === activeSessionId);
+    if (activeIdx <= 0) {
+      scroll.scrollLeft = 0;
+      // Update arrow state synchronously so the left arrow hides immediately
+      // (a deferred read could land mid-scroll and briefly keep it visible).
+      updateScrollState();
+      return;
+    }
+    const activeEl = scroll.querySelector('.tabbar-tab.active') as HTMLElement | null;
+    if (!activeEl) return;
     const tabLeft = activeEl.offsetLeft;
     const tabRight = activeEl.offsetLeft + activeEl.offsetWidth;
     if (tabLeft < scroll.scrollLeft) {
@@ -131,7 +142,7 @@ export function SessionTabBar({
     }
     const id = setTimeout(updateScrollState, 100);
     return () => clearTimeout(id);
-  }, [activeSessionId, updateScrollState]);
+  }, [activeSessionId, sessions, updateScrollState]);
 
   // --- Rotate hint text every 12s ---
   useEffect(() => {
@@ -221,10 +232,33 @@ export function SessionTabBar({
     setRenamingId(null);
   };
 
+  // Arrows pan the overflowing strip to reveal hidden tabs (without switching
+  // the active tab — switching is the wheel's / Ctrl+Tab's job).
   const scrollBy = (dx: number) => {
     scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
     setTimeout(updateScrollState, 300);
   };
+
+  // --- Wheel over the header switches between tabs ---
+  const wheelAccumRef = useRef(0);
+  const switchTab = useCallback((dir: number) => {
+    if (sessions.length < 2) return;
+    const idx = sessions.findIndex((s) => s.id === activeSessionId);
+    const cur = idx < 0 ? 0 : idx;
+    const next = Math.min(Math.max(cur + dir, 0), sessions.length - 1);
+    if (next !== cur) onSelect(sessions[next].id);
+  }, [sessions, activeSessionId, onSelect]);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    // Pick the dominant axis so both vertical wheels and horizontal trackpads work.
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    wheelAccumRef.current += delta;
+    const THRESHOLD = 30;
+    if (Math.abs(wheelAccumRef.current) >= THRESHOLD) {
+      switchTab(wheelAccumRef.current > 0 ? 1 : -1);
+      wheelAccumRef.current = 0;
+    }
+  }, [switchTab]);
 
   return (
     <div className="tabbar">
@@ -233,17 +267,14 @@ export function SessionTabBar({
 
       {/* Left scroll arrow */}
       {canScrollLeft && (
-        <button className="tabbar-arrow" onClick={() => scrollBy(-120)}>&#x276E;</button>
+        <button className="tabbar-arrow" onClick={() => scrollBy(-120)} title="Scroll tabs left">&#x276E;</button>
       )}
 
       {/* Tabs scroll area — takes all available space */}
       <div
         className="tabbar-scroll"
         ref={scrollRef}
-        onWheel={(e) => {
-          scrollRef.current!.scrollLeft += e.deltaY > 0 ? 60 : -60;
-          updateScrollState();
-        }}
+        onWheel={handleWheel}
         onScroll={updateScrollState}
       >
         {sessions.map((s) => (
@@ -290,7 +321,7 @@ export function SessionTabBar({
 
       {/* Right scroll arrow */}
       {canScrollRight && (
-        <button className="tabbar-arrow" onClick={() => scrollBy(120)}>&#x276F;</button>
+        <button className="tabbar-arrow" onClick={() => scrollBy(120)} title="Scroll tabs right">&#x276F;</button>
       )}
 
       {/* Right-click context menu */}
