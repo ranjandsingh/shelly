@@ -46,6 +46,11 @@ const BASE_HINTS = [
   "Drag the top bar to move",
 ];
 
+// Accumulated wheel delta (px) needed over the tab strip to switch one tab.
+const WHEEL_TAB_SWITCH_THRESHOLD = 30;
+// Approx px per "line" when a wheel reports deltaMode === 1 (Firefox/WebKitGTK).
+const WHEEL_LINE_HEIGHT_PX = 16;
+
 const STATUS_ICON: Record<string, React.ReactNode> = {
   Idle: null,
   Working: <span className="st-spin" />,
@@ -117,11 +122,29 @@ export function SessionTabBar({
     // Re-check when sessions change
   }, [sessions.length, updateScrollState]);
 
-  // --- Scroll active tab into view when activeSessionId changes ---
+  // Index of the active tab — single source for the scroll effect and switchTab.
+  const activeIndex = useMemo(
+    () => sessions.findIndex((s) => s.id === activeSessionId),
+    [sessions, activeSessionId],
+  );
+
+  // --- Scroll active tab into view when the active tab changes ---
+  // Keyed on activeIndex (not the whole sessions array) so unrelated status
+  // ticks don't re-run this and yank the strip back to the start.
   useEffect(() => {
     const scroll = scrollRef.current;
-    const activeEl = scroll?.querySelector('.tabbar-tab.active') as HTMLElement | null;
-    if (!activeEl || !scroll) return;
+    if (!scroll) return;
+    // When the first tab is active there's nothing to its left — snap fully to
+    // the start so its whole title shows and the left arrow disappears.
+    if (activeIndex <= 0) {
+      scroll.scrollLeft = 0;
+      // Update arrow state synchronously so the left arrow hides immediately
+      // (a deferred read could land mid-scroll and briefly keep it visible).
+      updateScrollState();
+      return;
+    }
+    const activeEl = scroll.querySelector('.tabbar-tab.active') as HTMLElement | null;
+    if (!activeEl) return;
     const tabLeft = activeEl.offsetLeft;
     const tabRight = activeEl.offsetLeft + activeEl.offsetWidth;
     if (tabLeft < scroll.scrollLeft) {
@@ -131,7 +154,7 @@ export function SessionTabBar({
     }
     const id = setTimeout(updateScrollState, 100);
     return () => clearTimeout(id);
-  }, [activeSessionId, updateScrollState]);
+  }, [activeIndex, updateScrollState]);
 
   // --- Rotate hint text every 12s ---
   useEffect(() => {
@@ -221,10 +244,62 @@ export function SessionTabBar({
     setRenamingId(null);
   };
 
+  // Arrows pan the overflowing strip to reveal hidden tabs (without switching
+  // the active tab — switching is the wheel's / Ctrl+Tab's job).
   const scrollBy = (dx: number) => {
     scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
     setTimeout(updateScrollState, 300);
   };
+
+  // --- Wheel over the header switches between tabs ---
+  const wheelAccumRef = useRef(0);
+  const switchTab = useCallback((dir: number) => {
+    if (sessions.length < 2 || activeIndex < 0) return;
+    // Clamp at the ends (no wrap) — a deliberate divergence from the wrapping
+    // Ctrl+Tab cycle in App.tsx.
+    const next = Math.min(Math.max(activeIndex + dir, 0), sessions.length - 1);
+    if (next !== activeIndex) onSelect(sessions[next].id);
+  }, [sessions, activeIndex, onSelect]);
+
+  // Latest-value refs so the native wheel listener can register exactly once.
+  const switchTabRef = useRef(switchTab);
+  const renamingIdRef = useRef(renamingId);
+  useEffect(() => { switchTabRef.current = switchTab; }, [switchTab]);
+  useEffect(() => { renamingIdRef.current = renamingId; }, [renamingId]);
+
+  // Wheel over the strip switches tabs. Registered as a NATIVE non-passive
+  // listener (React's onWheel is passive, so preventDefault would be ignored)
+  // so we can stop the browser's own scroll — otherwise it pans the strip /
+  // scrolls an ancestor at the same time, which is what made up vs. down feel
+  // inconsistent.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (renamingIdRef.current) return; // don't hijack the wheel mid-rename
+      // Normalize delta to pixels: Firefox/WebKitGTK report lines (mode 1) or
+      // pages (mode 2), where one notch is ~1-3 units rather than ~100px.
+      const unit = e.deltaMode === 1 ? WHEEL_LINE_HEIGHT_PX
+                 : e.deltaMode === 2 ? el.clientWidth
+                 : 1;
+      // Dominant axis so vertical wheels and horizontal trackpads both work.
+      const dx = e.deltaX * unit;
+      const dy = e.deltaY * unit;
+      const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+      if (!delta) return;
+      e.preventDefault();
+      // Reset on direction reversal so up and down behave symmetrically (no
+      // leftover same-sign delta biasing the next switch).
+      if (Math.sign(delta) !== Math.sign(wheelAccumRef.current)) wheelAccumRef.current = 0;
+      wheelAccumRef.current += delta;
+      if (Math.abs(wheelAccumRef.current) >= WHEEL_TAB_SWITCH_THRESHOLD) {
+        switchTabRef.current(wheelAccumRef.current > 0 ? 1 : -1);
+        wheelAccumRef.current = 0;
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     <div className="tabbar">
@@ -233,17 +308,13 @@ export function SessionTabBar({
 
       {/* Left scroll arrow */}
       {canScrollLeft && (
-        <button className="tabbar-arrow" onClick={() => scrollBy(-120)}>&#x276E;</button>
+        <button className="tabbar-arrow" onClick={() => scrollBy(-120)} title="Scroll tabs left">&#x276E;</button>
       )}
 
       {/* Tabs scroll area — takes all available space */}
       <div
         className="tabbar-scroll"
         ref={scrollRef}
-        onWheel={(e) => {
-          scrollRef.current!.scrollLeft += e.deltaY > 0 ? 60 : -60;
-          updateScrollState();
-        }}
         onScroll={updateScrollState}
       >
         {sessions.map((s) => (
@@ -290,7 +361,7 @@ export function SessionTabBar({
 
       {/* Right scroll arrow */}
       {canScrollRight && (
-        <button className="tabbar-arrow" onClick={() => scrollBy(120)}>&#x276F;</button>
+        <button className="tabbar-arrow" onClick={() => scrollBy(120)} title="Scroll tabs right">&#x276F;</button>
       )}
 
       {/* Right-click context menu */}

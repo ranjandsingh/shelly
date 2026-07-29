@@ -116,9 +116,9 @@ html, body, #root {
   border: none;
   color: var(--tab-text);
   cursor: pointer;
-  font-size: 10px;
-  padding: 3px 5px;
-  border-radius: 4px;
+  font-size: 13px;
+  padding: 6px 9px;
+  border-radius: 5px;
   flex-shrink: 0;
   line-height: 1;
   align-self: center;
